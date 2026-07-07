@@ -2,6 +2,7 @@
 
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
+- Designed a dark-themed, fully responsive Sign Up page with name, email, password, and confirm password inputs, stateful toggle controls, option selections, and a Google OAuth placeholder.
 - Designed a dark-themed, fully responsive Sign In page with email and password inputs, stateful toggle controls, option selections, and a Google OAuth placeholder.
 - Created authentication route group (`(auth)`) and layouts, configuring pages for `/sign-in`, `/sign-up`, `/forgot-password`, and `/verify-email`.
 - Migrated landing page routes into a marketing layout group (`(marketing)`) to isolate header/footer renders.
