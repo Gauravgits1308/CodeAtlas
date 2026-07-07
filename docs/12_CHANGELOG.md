@@ -2,6 +2,7 @@
 
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
+- Converted sign-in and sign-up routes to dynamic catch-all paths (`[[...sign-in]]` and `[[...sign-up]]`) matching Clerk v7 routing standards.
 - Fixed React SVG warnings by converting kebab-case SVG attributes (`stop-color`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`) to React camelCase in `Logo.tsx` and auth `layout.tsx`.
 - Configured Clerk post-authentication force and fallback environment variables in `.env.local` to resolve the post-login 404 page redirect.
 - Scaffolded a dashboard layout and console page (`/dashboard`) displaying repository indexing details, codebase metrics, and language percentage bars.

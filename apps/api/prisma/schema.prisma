@@ -1,0 +1,80 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RepositoryStatus {
+  PENDING
+  QUEUED
+  CLONING
+  ANALYZING
+  INDEXING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String       @id // Clerk User ID
+  email        String       @unique
+  name         String?
+  repositories Repository[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Repository {
+  id            String           @id @default(uuid())
+  githubRepoId  String           // GitHub internal ID
+  name          String
+  fullName      String           // e.g. "owner/repo-name"
+  owner         String
+  visibility    String           // "public" | "private"
+  defaultBranch String
+  cloneUrl      String
+  htmlUrl       String
+  description   String?
+  primaryLanguage String?
+  stars         Int              @default(0)
+  forks         Int              @default(0)
+  watchers      Int              @default(0)
+  status        RepositoryStatus @default(PENDING)
+  lastSyncedAt  DateTime?
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metrics       CodeMetric?
+  syncLogs      SyncLog[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([owner, name, userId])
+}
+
+model CodeMetric {
+  id                    String     @id @default(uuid())
+  repositoryId          String     @unique
+  repository            Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  linesCount            Int        @default(0)
+  filesCount            Int        @default(0)
+  languages             Json       // e.g. [{ "name": "TypeScript", "percentage": 68.5 }]
+  complexityScore       Int?
+  dependencyCount       Int        @default(0)
+  largestFiles          Json       // e.g. [{ "path": "src/core.ts", "lines": 1200 }]
+  largestDirectories    Json       // e.g. [{ "path": "src/controllers", "filesCount": 24 }]
+  averageFileSize       Float      @default(0.0)
+  documentationCoverage Float      @default(0.0)
+  updatedAt             DateTime   @updatedAt
+}
+
+model SyncLog {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  status       String     // "success" | "failed"
+  errorMessage String?
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+}
