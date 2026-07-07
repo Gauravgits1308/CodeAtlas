@@ -4,8 +4,9 @@ import * as React from "react"
 import Link from "next/link"
 import { Menu, X, ArrowRight } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import { Show, UserButton } from "@clerk/nextjs"
 import { Logo } from "./Logo"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import { Container } from "@/components/common/Container"
 import { Badge } from "@/components/common/Badge"
 import { cn } from "@/lib/utils"
@@ -72,13 +73,30 @@ export function Navbar() {
 
           {/* Action Buttons */}
           <div className="hidden md:flex items-center gap-4">
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              Sign In
-            </Button>
-            <Button size="sm" className="bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group">
-              Get Started
-              <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-            </Button>
+            <Show when="signed-out">
+              <Link
+                href="/sign-in"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "sm" }),
+                  "text-muted-foreground hover:text-foreground cursor-pointer"
+                )}
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/sign-up"
+                className={cn(
+                  buttonVariants({ size: "sm" }),
+                  "bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group cursor-pointer"
+                )}
+              >
+                Get Started
+                <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </Link>
+            </Show>
+            <Show when="signed-in">
+              <UserButton />
+            </Show>
           </div>
 
           {/* Mobile Menu Button */}
@@ -126,12 +144,34 @@ export function Navbar() {
                 ))}
               </nav>
               <div className="pt-4 border-t border-border/40 flex flex-col gap-3">
-                <Button variant="outline" className="w-full text-muted-foreground hover:text-foreground" onClick={() => setIsOpen(false)}>
-                  Sign In
-                </Button>
-                <Button className="w-full bg-primary hover:bg-primary/95 text-white" onClick={() => setIsOpen(false)}>
-                  Get Started
-                </Button>
+                <Show when="signed-out">
+                  <Link
+                    href="/sign-in"
+                    className={cn(
+                      buttonVariants({ variant: "outline" }),
+                      "w-full text-muted-foreground hover:text-foreground flex items-center justify-center h-10"
+                    )}
+                    onClick={() => setIsOpen(false)}
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/sign-up"
+                    className={cn(
+                      buttonVariants({ variant: "default" }),
+                      "w-full bg-primary hover:bg-primary/95 text-white flex items-center justify-center h-10"
+                    )}
+                    onClick={() => setIsOpen(false)}
+                  >
+                    Get Started
+                  </Link>
+                </Show>
+                <Show when="signed-in">
+                  <div className="flex items-center justify-between px-2 py-1.5 border border-border/40 rounded-lg bg-card/20">
+                    <span className="text-xs font-semibold text-muted-foreground">My Profile</span>
+                    <UserButton />
+                  </div>
+                </Show>
               </div>
             </div>
           </motion.div>
