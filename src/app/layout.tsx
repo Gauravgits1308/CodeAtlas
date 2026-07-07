@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { ClerkProvider } from "@clerk/nextjs"
+import { AppProviders } from "@/providers"
 import "./globals.css"
 import { Navbar } from "@/components/layout/Navbar"
 import { Footer } from "@/components/layout/Footer"
@@ -27,16 +29,20 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
-      style={{ colorScheme: "dark" }}
-    >
-      <body className="min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
-        <Navbar />
-        <main className="flex-1 flex flex-col">{children}</main>
-        <Footer />
-      </body>
-    </html>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+        style={{ colorScheme: "dark" }}
+      >
+        <body className="min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
+          <AppProviders>
+            <Navbar />
+            <main className="flex-1 flex flex-col">{children}</main>
+            <Footer />
+          </AppProviders>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }
