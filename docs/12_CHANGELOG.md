@@ -2,6 +2,8 @@
 
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
+- Created authentication route group (`(auth)`) and layouts, configuring pages for `/sign-in`, `/sign-up`, `/forgot-password`, and `/verify-email`.
+- Migrated landing page routes into a marketing layout group (`(marketing)`) to isolate header/footer renders.
 - Configured application root providers, wrapping layout in `ClerkProvider` and `AppProviders` (custom `ThemeProvider` and Sonner `Toaster`).
 - Installed authentication dependencies: `@clerk/nextjs`, `react-hook-form`, `zod`, `@hookform/resolvers`, and `sonner`.
 - Scaffolded feature directories under `src/features/auth` and `src/features/dashboard`.
