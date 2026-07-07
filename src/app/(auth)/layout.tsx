@@ -19,16 +19,16 @@ export default function AuthLayout({
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" className="w-8 h-8 transition-transform duration-300 group-hover:scale-105" fill="none">
               <defs>
                 <linearGradient id="auth-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#3B82F6" />
-                  <stop offset="100%" stop-color="#8B5CF6" />
+                  <stop offset="0%" stopColor="#3B82F6" />
+                  <stop offset="100%" stopColor="#8B5CF6" />
                 </linearGradient>
               </defs>
-              <rect x="2" y="2" width="28" height="28" rx="8" fill="#111827" stroke="url(#auth-logo-grad)" stroke-width="1.5"/>
-              <path d="M10 11L6 16L10 21" stroke="url(#auth-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M22 11L26 16L22 21" stroke="url(#auth-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="2" y="2" width="28" height="28" rx="8" fill="#111827" stroke="url(#auth-logo-grad)" strokeWidth="1.5"/>
+              <path d="M10 11L6 16L10 21" stroke="url(#auth-logo-grad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M22 11L26 16L22 21" stroke="url(#auth-logo-grad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <circle cx="16" cy="16" r="3" fill="#F9FAFB"/>
-              <path d="M16 8V11" stroke="#3B82F6" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M16 21V24" stroke="#8B5CF6" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M16 8V11" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M16 21V24" stroke="#8B5CF6" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </div>
           <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/80 bg-clip-text text-transparent">

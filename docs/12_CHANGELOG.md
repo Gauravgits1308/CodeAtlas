@@ -2,6 +2,9 @@
 
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
+- Fixed React SVG warnings by converting kebab-case SVG attributes (`stop-color`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`) to React camelCase in `Logo.tsx` and auth `layout.tsx`.
+- Configured Clerk post-authentication force and fallback environment variables in `.env.local` to resolve the post-login 404 page redirect.
+- Scaffolded a dashboard layout and console page (`/dashboard`) displaying repository indexing details, codebase metrics, and language percentage bars.
 - Integrated Clerk authentication using Clerk v7, creating `.env.local` configurations, route-protecting middleware, mounted dark-themed `<SignIn />` and `<SignUp />` views, and mounted conditional `<Show />` profiles with `<UserButton />` in the layout `Navbar`.
 - Designed a dark-themed, fully responsive Sign Up page with name, email, password, and confirm password inputs, stateful toggle controls, option selections, and a Google OAuth placeholder.
 - Designed a dark-themed, fully responsive Sign In page with email and password inputs, stateful toggle controls, option selections, and a Google OAuth placeholder.
