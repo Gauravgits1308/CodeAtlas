@@ -1,8 +1,10 @@
+import { config } from "./config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { config } from "./config";
+import { clerkMiddleware } from "@clerk/express";
+import { validateClerkConfig } from "./config/clerk";
 import { logger } from "./utils/logger";
 import { connectDb, prisma } from "./database";
 import { globalErrorHandler, notFoundHandler } from "./middleware/errors";
@@ -14,6 +16,7 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(clerkMiddleware()); // Attach Clerk session identities globally
 
 // Morgan HTTP request logging piped into Winston logger streams
 const morganStream = {
@@ -59,6 +62,9 @@ app.use(globalErrorHandler);
 
 // Bootstrap Server
 const startServer = async () => {
+  // Validate authentication client configuration setup
+  validateClerkConfig();
+
   // Connect database
   await connectDb();
 

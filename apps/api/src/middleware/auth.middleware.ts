@@ -1,12 +1,23 @@
-import { Request, Response, NextFunction } from "express"
-import { getAuth } from "@clerk/express"
-import { AppError } from "../utils/errors"
+/// <reference path="../types/express.d.ts" />
+import { Request, Response, NextFunction } from "express";
+import { getAuth } from "@clerk/express";
 
-// Route-level authentication blocker
-export const requireAuthentication = (req: Request, res: Response, next: NextFunction) => {
-  const auth = getAuth(req)
+export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  const auth = getAuth(req);
+
   if (!auth.userId) {
-    return next(new AppError("Unauthorized: Authentication is required.", 401))
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized"
+    });
   }
-  next()
-}
+
+  // Populate req.auth matching types
+  req.auth = {
+    userId: auth.userId,
+    sessionId: auth.sessionId || null,
+    orgId: auth.orgId || null
+  };
+
+  next();
+};

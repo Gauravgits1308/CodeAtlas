@@ -6,6 +6,7 @@
 - Installed `@clerk/express` and integrated the session identity middlewares to protect routes.
 - Created `src/config/clerk.ts` to validate presence of Clerk secret keys at server startup and export client instances.
 - Implemented user lookup (`/me`) and account profile synchronization (`/sync`) REST routes, caching Clerk sessions to PostgreSQL.
+- Created `apps/web/src/app/debug-token/page.tsx` as a temporary helper route to retrieve and copy Clerk JWT tokens during API testing.
 
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
