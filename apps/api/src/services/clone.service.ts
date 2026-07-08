@@ -3,7 +3,6 @@ import { RepositoryRepository } from "../repositories/repository.repository";
 import * as fs from "fs";
 import * as path from "path";
 import { logger } from "../utils/logger";
-import { AppError } from "../utils/errors";
 
 export class CloneService {
   constructor(
@@ -22,8 +21,11 @@ export class CloneService {
 
     // Verify if already cloned to prevent overwrite conflicts
     if (fs.existsSync(storagePath) && (await this.gitService.exists(storagePath))) {
-      logger.warn(`Conflict: Repository ${repositoryId} already exists locally at path: ${storagePath}`);
-      throw new AppError("Repository already cloned.", 409);
+      logger.info(`Repository ${repositoryId} already exists locally at path: ${storagePath}. Skipping clone step.`);
+      // Update status to COMPLETED and sync timestamp for the skipped clone
+      await this.repositoryRepository.updateStatus(repositoryId, "COMPLETED");
+      await this.repositoryRepository.updateLastSynced(repositoryId);
+      return;
     }
 
     logger.info(`Clone started for repository: ${repositoryId}`);
