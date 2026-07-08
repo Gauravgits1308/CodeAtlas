@@ -1,3 +1,15 @@
+import { getGithubOAuthToken } from "./github-token"
+
+declare global {
+  interface Window {
+    Clerk?: {
+      session?: {
+        getToken: (options?: unknown) => Promise<string | null>;
+      };
+    };
+  }
+}
+
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>
 }
@@ -20,6 +32,43 @@ class ApiClient {
 
     const headers = new Headers(options.headers)
     headers.set("Content-Type", "application/json")
+
+    // Retrieve tokens to authenticate backend API queries
+    let clerkToken: string | null = null
+    let githubToken: string | null = null
+
+    if (typeof window !== "undefined") {
+      // Client-side environment
+      if (window.Clerk?.session) {
+        clerkToken = await window.Clerk.session.getToken()
+      }
+      try {
+        githubToken = await getGithubOAuthToken()
+      } catch (err) {
+        console.error("Failed to retrieve GitHub token on client-side API call:", err)
+      }
+    } else {
+      // Server-side environment (SSR, Server Actions, Server Components)
+      try {
+        const { auth } = await import("@clerk/nextjs/server")
+        const authSession = await auth()
+        clerkToken = await authSession.getToken()
+      } catch (err) {
+        console.error("Failed to retrieve Clerk token on server-side API call:", err)
+      }
+      try {
+        githubToken = await getGithubOAuthToken()
+      } catch (err) {
+        console.error("Failed to retrieve GitHub token on server-side API call:", err)
+      }
+    }
+
+    if (clerkToken) {
+      headers.set("Authorization", `Bearer ${clerkToken}`)
+    }
+    if (githubToken) {
+      headers.set("X-Github-Token", githubToken)
+    }
 
     const config: RequestInit = {
       ...options,

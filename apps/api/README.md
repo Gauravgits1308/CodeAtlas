@@ -53,3 +53,10 @@ Run scripts from the monorepo root using `npm run <script> -w apps/api` or direc
 * `npm run format`: Standardizes formatting styles using Prettier.
 * `npm run prisma:generate`: Compiles Prisma schemas and generates types.
 * `npm run prisma:migrate`: Runs migrations / pushes schemas to PostgreSQL database.
+
+---
+
+## Authentication & Header Protocols
+The backend API expects specific HTTP headers on authenticated route calls:
+* `Authorization`: `Bearer <clerk_session_jwt>` (validated by the Clerk JWT verification middleware).
+* `X-Github-Token`: `<github_oauth_access_token>` (forwarded by the frontend API client. Future repository indexing, discover, and sync endpoints will consume this header to call the GitHub API on behalf of the user).
