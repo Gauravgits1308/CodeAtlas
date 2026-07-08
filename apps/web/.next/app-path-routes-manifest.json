@@ -1,11 +1,11 @@
 {
-  "/favicon.ico/route": "/favicon.ico",
   "/_not-found/page": "/_not-found",
+  "/favicon.ico/route": "/favicon.ico",
   "/dev/sync-user/page": "/dev/sync-user",
   "/(auth)/forgot-password/page": "/forgot-password",
-  "/(auth)/sign-in/[[...sign-in]]/page": "/sign-in/[[...sign-in]]",
   "/(auth)/sign-up/[[...sign-up]]/page": "/sign-up/[[...sign-up]]",
   "/(auth)/verify-email/page": "/verify-email",
   "/(dashboard)/dashboard/page": "/dashboard",
-  "/(marketing)/page": "/"
+  "/(marketing)/page": "/",
+  "/(auth)/sign-in/[[...sign-in]]/page": "/sign-in/[[...sign-in]]"
 }

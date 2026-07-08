@@ -12,6 +12,7 @@ import authRouter from "./routes/auth.routes";
 import githubRouter from "./routes/github.routes";
 import repositoryRouter from "./routes/repository.routes";
 import jobRouter from "./routes/job.routes";
+import devRouter from "./routes/dev.routes";
 import "./workers/repository.worker";
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/github", githubRouter);
 app.use("/api/v1/repositories", repositoryRouter);
 app.use("/api/v1/jobs", jobRouter);
+app.use("/api/v1/dev", devRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {
