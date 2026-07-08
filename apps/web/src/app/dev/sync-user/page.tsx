@@ -26,6 +26,37 @@ interface FetchReposResponse {
   repositories: GitHubRepository[]
 }
 
+interface ImportedRepo {
+  id: string
+  githubRepoId: string
+  name: string
+  fullName: string
+  owner: string
+  visibility: string
+  defaultBranch: string
+  cloneUrl: string
+  htmlUrl: string
+  description: string | null
+  primaryLanguage: string | null
+  stars: number
+  forks: number
+  watchers: number
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface ImportResponse {
+  success: boolean
+  imported: number
+  repositories: ImportedRepo[]
+}
+
+interface ListImportedResponse {
+  success: boolean
+  repositories: ImportedRepo[]
+}
+
 export default function DevSyncUserPage() {
   // User Synchronization States
   const [loading, setLoading] = React.useState(false)
@@ -39,8 +70,44 @@ export default function DevSyncUserPage() {
 
   // Repository Import States
   const [importingRepoId, setImportingRepoId] = React.useState<number | null>(null)
-  const [importResponse, setImportResponse] = React.useState<unknown>(null)
+  const [importResponse, setImportResponse] = React.useState<ImportResponse | null>(null)
   const [importError, setImportError] = React.useState<string | null>(null)
+
+  // Local Database Imported Repositories States
+  const [importedRepos, setImportedRepos] = React.useState<ImportedRepo[]>([])
+  const [loadingImported, setLoadingImported] = React.useState(false)
+  const [errorImported, setErrorImported] = React.useState<string | null>(null)
+
+  // Repository Cloning States
+  const [cloningRepoId, setCloningRepoId] = React.useState<string | null>(null)
+  const [cloneResponse, setCloneResponse] = React.useState<unknown>(null)
+  const [cloneError, setCloneError] = React.useState<string | null>(null)
+
+  // Fetch all imported repositories from PostgreSQL
+  const fetchImportedRepos = React.useCallback(async () => {
+    setLoadingImported(true)
+    setErrorImported(null)
+    try {
+      const result = await api.get<ListImportedResponse>("/v1/repositories")
+      setImportedRepos(result.repositories || [])
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setErrorImported(err.message)
+      } else {
+        setErrorImported("Failed to retrieve imported repositories list.")
+      }
+    } finally {
+      setLoadingImported(false)
+    }
+  }, [])
+
+  // Retrieve imported list on mount after session cookies resolve
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchImportedRepos()
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [fetchImportedRepos])
 
   const handleSync = async () => {
     setLoading(true)
@@ -106,8 +173,10 @@ export default function DevSyncUserPage() {
     }
 
     try {
-      const result = await api.post<unknown>("/v1/repositories/import", payload)
+      const result = await api.post<ImportResponse>("/v1/repositories/import", payload)
       setImportResponse(result)
+      // Fetch latest list to display the newly imported repo
+      await fetchImportedRepos()
     } catch (err: unknown) {
       if (err instanceof Error) {
         setImportError(err.message)
@@ -119,19 +188,40 @@ export default function DevSyncUserPage() {
     }
   }
 
+  const handleClone = async (repoId: string) => {
+    setCloningRepoId(repoId)
+    setCloneResponse(null)
+    setCloneError(null)
+    try {
+      // POST to /api/v1/repositories/:id/clone
+      const result = await api.post<unknown>(`/v1/repositories/${repoId}/clone`)
+      setCloneResponse(result)
+      // Refresh list to update status from PENDING to COMPLETED in the UI
+      await fetchImportedRepos()
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setCloneError(err.message)
+      } else {
+        setCloneError("An unknown error occurred while cloning.")
+      }
+    } finally {
+      setCloningRepoId(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#030712] p-6 text-foreground">
-      <div className="w-full max-w-4xl rounded-xl border border-border/40 bg-[#0b0f19] p-6 shadow-2xl mt-10">
-        <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Auth & GitHub Debugger</h1>
+      <div className="w-full max-w-5xl rounded-xl border border-border/40 bg-[#0b0f19] p-6 shadow-2xl mt-10">
+        <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Auth, GitHub & Repo Debugger</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          Trigger local account synchronizations and import repositories to PostgreSQL.
+          Synchronize user profiles, discover remote repositories, and test directory cloning workflows.
         </p>
 
         {/* Buttons Action Bar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row">
           <button
             onClick={handleSync}
-            disabled={loading || loadingRepos || importingRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 font-semibold text-white shadow-md transition-all hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Synchronizing..." : "Synchronize User"}
@@ -139,10 +229,18 @@ export default function DevSyncUserPage() {
           
           <button
             onClick={handleFetchRepos}
-            disabled={loading || loadingRepos || importingRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loadingRepos ? "Fetching repos..." : "Fetch GitHub Repositories"}
+          </button>
+
+          <button
+            onClick={fetchImportedRepos}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || loadingImported}
+            className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
+          >
+            {loadingImported ? "Refreshing DB..." : "Refresh Imported List"}
           </button>
         </div>
 
@@ -188,7 +286,7 @@ export default function DevSyncUserPage() {
           )}
         </div>
 
-        {/* Table of Repositories */}
+        {/* Table of Discovered Repositories */}
         {!!responseRepos && responseRepos.repositories && (
           <div className="mt-8 border-t border-border/40 pt-6">
             <h2 className="mb-4 text-lg font-bold text-foreground">Discovered Repositories</h2>
@@ -224,7 +322,7 @@ export default function DevSyncUserPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => handleImport(repo)}
-                          disabled={importingRepoId !== null || loading || loadingRepos}
+                          disabled={importingRepoId !== null || loading || loadingRepos || cloningRepoId !== null}
                           className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
                         >
                           {importingRepoId === repo.id ? "Importing..." : "Import"}
@@ -236,8 +334,8 @@ export default function DevSyncUserPage() {
               </table>
             </div>
 
-            {/* Display Import Response */}
-            <div className="mt-4 space-y-3">
+            {/* Display Import logs */}
+            <div className="mt-4 space-y-2">
               {importingRepoId !== null && (
                 <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -246,23 +344,111 @@ export default function DevSyncUserPage() {
               )}
 
               {importError && (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">
-                  <span className="font-semibold block mb-1">Import Error:</span>
-                  <p className="font-mono text-xs">{importError}</p>
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400 font-mono text-xs">
+                  <strong>Import Error:</strong> {importError}
                 </div>
               )}
 
               {!!importResponse && (
-                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-400">
-                  <span className="font-semibold block mb-2">Import Success Response:</span>
-                  <pre className="overflow-x-auto max-h-60 rounded-md bg-[#030712] p-3 font-mono text-xs text-foreground leading-relaxed">
-                    {JSON.stringify(importResponse, null, 2)}
-                  </pre>
+                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-400 font-mono text-xs">
+                  <strong>Import Success:</strong> Stored {importResponse.imported} repository entry.
                 </div>
               )}
             </div>
           </div>
         )}
+
+        {/* Table of Imported Repositories in local PostgreSQL */}
+        <div className="mt-8 border-t border-border/40 pt-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-foreground">Imported Repositories (PostgreSQL)</h2>
+            {loadingImported && (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            )}
+          </div>
+
+          {errorImported && (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-xs text-red-400 font-mono mb-4">
+              <strong>Fetch Imported Error:</strong> {errorImported}
+            </div>
+          )}
+
+          {importedRepos.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 bg-[#030712] rounded-lg border border-border/40 text-center">
+              No repositories imported in local database yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border/40 bg-[#030712]">
+              <table className="w-full text-left text-sm text-muted-foreground border-collapse">
+                <thead className="bg-[#0b0f19] text-xs uppercase text-foreground">
+                  <tr>
+                    <th className="px-4 py-3 border-b border-border/40">Name</th>
+                    <th className="px-4 py-3 border-b border-border/40">Owner</th>
+                    <th className="px-4 py-3 border-b border-border/40">Status</th>
+                    <th className="px-4 py-3 border-b border-border/40">Default Branch</th>
+                    <th className="px-4 py-3 border-b border-border/40 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {importedRepos.map((repo) => (
+                    <tr key={repo.id} className="hover:bg-muted/10 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-foreground truncate max-w-[200px]" title={repo.name}>
+                        {repo.name}
+                      </td>
+                      <td className="px-4 py-3">{repo.owner}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          repo.status === "COMPLETED" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
+                          repo.status === "CLONING" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
+                          repo.status === "FAILED" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                          "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                        }`}>
+                          {repo.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{repo.defaultBranch}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleClone(repo.id)}
+                          disabled={cloningRepoId !== null || loading || loadingRepos || importingRepoId !== null}
+                          className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
+                        >
+                          {cloningRepoId === repo.id ? "Cloning..." : "Clone Repository"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Display Clone Status Response Logs */}
+          <div className="mt-4 space-y-3">
+            {cloningRepoId !== null && (
+              <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span>Cloning repository to local filesystem...</span>
+              </div>
+            )}
+
+            {cloneError && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+                <span className="font-semibold block mb-1">Clone Error:</span>
+                <p className="font-mono">{cloneError}</p>
+              </div>
+            )}
+
+            {!!cloneResponse && (
+              <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-xs text-green-400">
+                <span className="font-semibold block mb-1">Clone Success Response:</span>
+                <pre className="overflow-x-auto max-h-40 rounded-md bg-[#030712] p-2 font-mono text-[10px] text-foreground leading-normal">
+                  {JSON.stringify(cloneResponse, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

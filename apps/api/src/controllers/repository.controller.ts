@@ -40,4 +40,51 @@ export class RepositoryController {
       })),
     });
   });
+
+  getUserRepositories = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const repositories = await this.repositoryService.getUserRepositories(userId);
+
+    res.status(200).json({
+      success: true,
+      repositories: repositories.map((repo) => ({
+        id: repo.id,
+        githubRepoId: repo.githubRepoId,
+        name: repo.name,
+        fullName: repo.fullName,
+        owner: repo.owner,
+        visibility: repo.visibility,
+        defaultBranch: repo.defaultBranch,
+        cloneUrl: repo.cloneUrl,
+        htmlUrl: repo.htmlUrl,
+        description: repo.description,
+        primaryLanguage: repo.primaryLanguage,
+        stars: repo.stars,
+        forks: repo.forks,
+        watchers: repo.watchers,
+        status: repo.status,
+        createdAt: repo.createdAt,
+        updatedAt: repo.updatedAt,
+      })),
+    });
+  });
+
+  cloneRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    const repository = await this.repositoryService.cloneRepository(id, userId);
+
+    res.status(200).json({
+      success: true,
+      message: "Repository cloned successfully.",
+      repository: {
+        id: repository.id,
+        name: repository.name,
+        fullName: repository.fullName,
+        status: repository.status,
+        lastSyncedAt: repository.lastSyncedAt,
+      },
+    });
+  });
 }

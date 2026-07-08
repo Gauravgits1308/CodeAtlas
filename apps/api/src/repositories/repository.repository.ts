@@ -1,5 +1,5 @@
 import { prisma } from "../database";
-import { Repository } from "@prisma/client";
+import { Repository, RepositoryStatus } from "@prisma/client";
 
 export type CreateRepositoryInput = {
   githubRepoId: string;
@@ -47,6 +47,26 @@ export class RepositoryRepository {
   async findByUser(userId: string): Promise<Repository[]> {
     return prisma.repository.findMany({
       where: { userId },
+    });
+  }
+
+  async findById(id: string): Promise<Repository | null> {
+    return prisma.repository.findUnique({
+      where: { id },
+    });
+  }
+
+  async updateStatus(id: string, status: RepositoryStatus): Promise<Repository> {
+    return prisma.repository.update({
+      where: { id },
+      data: { status },
+    });
+  }
+
+  async updateLastSynced(id: string): Promise<Repository> {
+    return prisma.repository.update({
+      where: { id },
+      data: { lastSyncedAt: new Date() },
     });
   }
 
