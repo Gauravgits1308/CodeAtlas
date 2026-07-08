@@ -3,6 +3,8 @@ import { Repository } from "@prisma/client";
 import { AppError } from "../utils/errors";
 import { CloneService } from "./clone.service";
 import { GitService } from "./git.service";
+import { CodeMetricRepository } from "../repositories/code-metric.repository";
+import { RepositoryAnalysisService } from "./repository-analysis.service";
 
 export interface ImportRepositoryPayload {
   githubRepoId: string | number;
@@ -23,10 +25,19 @@ export interface ImportRepositoryPayload {
 export class RepositoryService {
   private repositoryRepository: RepositoryRepository;
   private cloneService: CloneService;
+  private codeMetricRepository: CodeMetricRepository;
+  private repositoryAnalysisService: RepositoryAnalysisService;
 
-  constructor(repositoryRepository: RepositoryRepository, cloneService?: CloneService) {
+  constructor(
+    repositoryRepository: RepositoryRepository,
+    cloneService?: CloneService,
+    codeMetricRepository?: CodeMetricRepository,
+    repositoryAnalysisService?: RepositoryAnalysisService
+  ) {
     this.repositoryRepository = repositoryRepository;
     this.cloneService = cloneService || new CloneService(new GitService(), repositoryRepository);
+    this.codeMetricRepository = codeMetricRepository || new CodeMetricRepository();
+    this.repositoryAnalysisService = repositoryAnalysisService || new RepositoryAnalysisService();
   }
 
   async importRepositories(userId: string, payloads: ImportRepositoryPayload[]): Promise<Repository[]> {
@@ -97,5 +108,44 @@ export class RepositoryService {
       throw new AppError("Failed to retrieve updated repository status.", 500);
     }
     return updatedRepo;
+  }
+
+  async analyzeRepository(repositoryId: string, userId: string) {
+    const repo = await this.repositoryRepository.findById(repositoryId);
+    if (!repo) {
+      throw new AppError("Repository not found.", 404);
+    }
+
+    if (repo.userId !== userId) {
+      throw new AppError("Forbidden: You do not own this repository.", 403);
+    }
+
+    if (repo.status !== "COMPLETED" && repo.status !== "FAILED") {
+      throw new AppError("Repository codebase must be cloned successfully before triggering analysis.", 400);
+    }
+
+    await this.repositoryRepository.updateStatus(repo.id, "ANALYZING");
+
+    try {
+      const results = await this.repositoryAnalysisService.analyze(repo.id);
+
+      const metrics = await this.codeMetricRepository.createOrUpdate({
+        repositoryId: repo.id,
+        linesCount: results.linesCount,
+        filesCount: results.filesCount,
+        languages: results.languages,
+        dependencyCount: results.dependencyCount,
+        largestFiles: results.largestFiles,
+        largestDirectories: results.largestDirectories,
+        averageFileSize: results.averageFileSize,
+      });
+
+      await this.repositoryRepository.updateStatus(repo.id, "COMPLETED");
+
+      return metrics;
+    } catch (error) {
+      await this.repositoryRepository.updateStatus(repo.id, "FAILED");
+      throw error;
+    }
   }
 }

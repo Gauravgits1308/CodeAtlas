@@ -1,15 +1,16 @@
-# Walkthrough - Development Page Updated with PostgreSQL Imports
+# Walkthrough - Development Page Updated with Repository Analysis
 
-The client-side debugging dashboard page has been successfully updated to display a reactive table containing the user's local database repositories fetched directly from the backend.
+The client-side debugging dashboard page has been successfully updated to support manual triggering of codebase metrics analysis operations for successfully cloned repositories.
 
 ## Files Modified
 - **User Sync Debugger Page** ([apps/web/src/app/dev/sync-user/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/dev/sync-user/page.tsx)):
-  - Added a third action button: **Refresh Imported List**.
-  - On page load and after every successful import, queries `GET /api/v1/repositories` to populate local states (`importedRepos`).
-  - Displays imported repos in a PostgreSQL-specific dashboard table showing `Name`, `Owner`, `Status`, and `Default Branch`.
-  - Maps the **Clone Repository** button to execute `POST /api/v1/repositories/{id}/clone`.
-  - While cloning, the action button is disabled and displays `Cloning...`.
-  - On clone success, triggers a fresh list query to refresh the status to `COMPLETED` and print the returned JSON logs.
+  - Lists successfully imported repository status states dynamically.
+  - Replaces the **Clone Repository** button with an **Analyze Repository** button when `repo.status === "COMPLETED"`.
+  - On click, triggers `POST /api/v1/repositories/{id}/analyze` via the API client.
+  - Implements states tracking repository analyses (`analyzingRepoId`, `analysisResponse`, `analysisError`).
+  - Automatically disables interactive triggers during analysis executions.
+  - Refreshes database listings upon completion to synchronize state statuses.
+  - Visualizes complete results returned: files count, total lines count (LOC), language breakdown percentages, and lists top 5 largest files and directory trees.
 
 ---
 
@@ -22,19 +23,17 @@ npm run dev
 
 ### 2. Verify Page Layout
 Navigate to `http://localhost:3000/dev/sync-user` inside the browser.
-* If not authenticated, you will be redirected to the sign-in page.
-* After logging in, the page displays three action blocks:
-  1. Synchronize User
-  2. Discovered Repositories
-  3. Imported Repositories (PostgreSQL)
+* Log in via Clerk auth.
+* Select a repository and click **Clone Repository**.
+* Once the status updates to `COMPLETED`, the button changes to **Analyze Repository**.
 
-### 3. Verify Repository Refresh Flow
-* Click **Fetch GitHub Repositories** to load your user repositories.
-* Click **Import** on one repository.
-* Once the import returns success, the repository list in the **Imported Repositories (PostgreSQL)** section will automatically refresh and display the newly imported repo with status `PENDING`.
-
-### 4. Verify Cloning Flow
-* In the **Imported Repositories** section, click **Clone Repository** next to your imported project.
-* The button will immediately transition to a disabled state showing **Cloning...**.
-* The console status logs will read `Cloning codebase to local filesystem...`.
-* Once completed, the table status will automatically update to `COMPLETED`, and the success block will pretty-print the backend response.
+### 3. Verify Code Analysis Flow
+* Click **Analyze Repository**.
+* The button will immediately transition to a disabled state showing **Analyzing...**.
+* The console status logs will read `Analyzing repository codebase and saving metrics...`.
+* Once completed, the table status will show `COMPLETED`, and the success response card will display:
+  * Total files count
+  * Total lines count (LOC)
+  * Language distribution lists
+  * Top 5 largest files list
+  * Top 5 largest directories list

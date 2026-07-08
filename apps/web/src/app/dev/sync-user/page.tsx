@@ -57,6 +57,26 @@ interface ListImportedResponse {
   repositories: ImportedRepo[]
 }
 
+interface AnalysisMetrics {
+  id: string
+  repositoryId: string
+  linesCount: number
+  filesCount: number
+  languages: { name: string; percentage: number }[]
+  complexityScore: number | null
+  dependencyCount: number
+  largestFiles: { path: string; lines: number }[]
+  largestDirectories: { path: string; filesCount: number }[]
+  averageFileSize: number
+  documentationCoverage: number
+  updatedAt: string
+}
+
+interface AnalysisResponse {
+  success: boolean
+  metrics: AnalysisMetrics
+}
+
 export default function DevSyncUserPage() {
   // User Synchronization States
   const [loading, setLoading] = React.useState(false)
@@ -82,6 +102,11 @@ export default function DevSyncUserPage() {
   const [cloningRepoId, setCloningRepoId] = React.useState<string | null>(null)
   const [cloneResponse, setCloneResponse] = React.useState<unknown>(null)
   const [cloneError, setCloneError] = React.useState<string | null>(null)
+
+  // Repository Analysis States
+  const [analyzingRepoId, setAnalyzingRepoId] = React.useState<string | null>(null)
+  const [analysisResponse, setAnalysisResponse] = React.useState<AnalysisResponse | null>(null)
+  const [analysisError, setAnalysisError] = React.useState<string | null>(null)
 
   // Fetch all imported repositories from PostgreSQL
   const fetchImportedRepos = React.useCallback(async () => {
@@ -209,19 +234,40 @@ export default function DevSyncUserPage() {
     }
   }
 
+  const handleAnalyze = async (repoId: string) => {
+    setAnalyzingRepoId(repoId)
+    setAnalysisResponse(null)
+    setAnalysisError(null)
+    try {
+      // POST to /api/v1/repositories/:id/analyze
+      const result = await api.post<AnalysisResponse>(`/v1/repositories/${repoId}/analyze`)
+      setAnalysisResponse(result)
+      // Refresh list to display the updated repository status and metric parameters
+      await fetchImportedRepos()
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setAnalysisError(err.message)
+      } else {
+        setAnalysisError("An unknown error occurred while analyzing.")
+      }
+    } finally {
+      setAnalyzingRepoId(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#030712] p-6 text-foreground">
       <div className="w-full max-w-5xl rounded-xl border border-border/40 bg-[#0b0f19] p-6 shadow-2xl mt-10">
         <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Auth, GitHub & Repo Debugger</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          Synchronize user profiles, discover remote repositories, and test directory cloning workflows.
+          Synchronize user profiles, discover remote repositories, and analyze codebase metrics.
         </p>
 
         {/* Buttons Action Bar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row">
           <button
             onClick={handleSync}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 font-semibold text-white shadow-md transition-all hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Synchronizing..." : "Synchronize User"}
@@ -229,7 +275,7 @@ export default function DevSyncUserPage() {
           
           <button
             onClick={handleFetchRepos}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loadingRepos ? "Fetching repos..." : "Fetch GitHub Repositories"}
@@ -237,7 +283,7 @@ export default function DevSyncUserPage() {
 
           <button
             onClick={fetchImportedRepos}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || loadingImported}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null || loadingImported}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loadingImported ? "Refreshing DB..." : "Refresh Imported List"}
@@ -322,7 +368,7 @@ export default function DevSyncUserPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => handleImport(repo)}
-                          disabled={importingRepoId !== null || loading || loadingRepos || cloningRepoId !== null}
+                          disabled={importingRepoId !== null || loading || loadingRepos || cloningRepoId !== null || analyzingRepoId !== null}
                           className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
                         >
                           {importingRepoId === repo.id ? "Importing..." : "Import"}
@@ -400,6 +446,7 @@ export default function DevSyncUserPage() {
                         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           repo.status === "COMPLETED" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
                           repo.status === "CLONING" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
+                          repo.status === "ANALYZING" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20 animate-pulse" :
                           repo.status === "FAILED" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
                           "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
                         }`}>
@@ -408,13 +455,23 @@ export default function DevSyncUserPage() {
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{repo.defaultBranch}</td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleClone(repo.id)}
-                          disabled={cloningRepoId !== null || loading || loadingRepos || importingRepoId !== null}
-                          className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
-                        >
-                          {cloningRepoId === repo.id ? "Cloning..." : "Clone Repository"}
-                        </button>
+                        {repo.status === "COMPLETED" ? (
+                          <button
+                            onClick={() => handleAnalyze(repo.id)}
+                            disabled={analyzingRepoId !== null || loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
+                            className="inline-flex h-8 items-center justify-center rounded bg-green-600 px-3 text-xs font-semibold text-white shadow-md hover:bg-green-700 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
+                          >
+                            {analyzingRepoId === repo.id ? "Analyzing..." : "Analyze Repository"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleClone(repo.id)}
+                            disabled={cloningRepoId !== null || loading || loadingRepos || importingRepoId !== null || analyzingRepoId !== null}
+                            className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
+                          >
+                            {cloningRepoId === repo.id ? "Cloning..." : "Clone Repository"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -423,7 +480,7 @@ export default function DevSyncUserPage() {
             </div>
           )}
 
-          {/* Display Clone Status Response Logs */}
+          {/* Display Clone & Analysis Logs */}
           <div className="mt-4 space-y-3">
             {cloningRepoId !== null && (
               <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
@@ -445,6 +502,72 @@ export default function DevSyncUserPage() {
                 <pre className="overflow-x-auto max-h-40 rounded-md bg-[#030712] p-2 font-mono text-[10px] text-foreground leading-normal">
                   {JSON.stringify(cloneResponse, null, 2)}
                 </pre>
+              </div>
+            )}
+
+            {/* Analysis Logs */}
+            {analyzingRepoId !== null && (
+              <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span>Analyzing repository codebase and saving metrics...</span>
+              </div>
+            )}
+
+            {analysisError && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+                <span className="font-semibold block mb-1">Analysis Error:</span>
+                <p className="font-mono">{analysisError}</p>
+              </div>
+            )}
+
+            {!!analysisResponse && analysisResponse.metrics && (
+              <div className="rounded-lg border border-border/40 bg-[#030712] p-4 space-y-4 text-sm">
+                <span className="font-semibold text-green-400 block">Analysis Success Response:</span>
+                
+                <div className="grid grid-cols-2 gap-4 border-b border-border/20 pb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Files</p>
+                    <p className="text-lg font-bold text-foreground">{analysisResponse.metrics.filesCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Lines of Code (LOC)</p>
+                    <p className="text-lg font-bold text-foreground">{analysisResponse.metrics.linesCount}</p>
+                  </div>
+                </div>
+
+                <div className="border-b border-border/20 pb-4">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">Languages Breakdown</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(analysisResponse.metrics.languages || []).map((lang, idx) => (
+                      <span key={idx} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary border border-primary/20">
+                        {lang.name}: {lang.percentage}%
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">Top 5 Largest Files</p>
+                    <ul className="space-y-1 text-xs list-disc pl-4 text-muted-foreground">
+                      {(analysisResponse.metrics.largestFiles || []).map((file, idx) => (
+                        <li key={idx}>
+                          <span className="font-mono text-foreground">{file.path}</span> ({file.lines} lines)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">Top 5 Largest Directories</p>
+                    <ul className="space-y-1 text-xs list-disc pl-4 text-muted-foreground">
+                      {(analysisResponse.metrics.largestDirectories || []).map((dir, idx) => (
+                        <li key={idx}>
+                          <span className="font-mono text-foreground">{dir.path}</span> ({dir.filesCount} files)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </div>
             )}
           </div>
