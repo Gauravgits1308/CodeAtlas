@@ -10,11 +10,11 @@ export class SyncUserUseCase {
 
   async execute(userId: string): Promise<UserProfile> {
     const clerkUser = await this.authService.fetchClerkUser(userId)
-    const user = await this.userRepository.upsertUser(
-      clerkUser.userId,
-      clerkUser.email,
-      clerkUser.name
-    )
+    const user = await this.userRepository.upsert({
+      id: clerkUser.userId,
+      email: clerkUser.email,
+      name: clerkUser.name || null
+    })
     return user
   }
 }

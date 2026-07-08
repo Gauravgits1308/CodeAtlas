@@ -19,11 +19,16 @@ export class AuthController {
 
   syncUser = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const userId = req.auth.userId;
-    const result = await this.authService.syncUser(userId);
+    const user = await this.authService.syncUser(userId);
 
     res.status(200).json({
       success: true,
-      message: result.message,
+      message: "User synchronized successfully.",
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
     });
   });
 }

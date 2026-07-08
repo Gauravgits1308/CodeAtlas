@@ -47,20 +47,6 @@ class ApiClient {
       } catch (err) {
         console.error("Failed to retrieve GitHub token on client-side API call:", err)
       }
-    } else {
-      // Server-side environment (SSR, Server Actions, Server Components)
-      try {
-        const { auth } = await import("@clerk/nextjs/server")
-        const authSession = await auth()
-        clerkToken = await authSession.getToken()
-      } catch (err) {
-        console.error("Failed to retrieve Clerk token on server-side API call:", err)
-      }
-      try {
-        githubToken = await getGithubOAuthToken()
-      } catch (err) {
-        console.error("Failed to retrieve GitHub token on server-side API call:", err)
-      }
     }
 
     if (clerkToken) {

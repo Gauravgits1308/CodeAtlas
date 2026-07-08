@@ -9,7 +9,7 @@ export class GetCurrentUserUseCase {
   ) {}
 
   async execute(userId: string): Promise<UserProfile> {
-    const user = await this.userRepository.findById(userId)
+    const user = await this.userRepository.findByClerkId(userId)
     if (user) {
       return user
     }

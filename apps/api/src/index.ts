@@ -9,6 +9,8 @@ import { logger } from "./utils/logger";
 import { connectDb, prisma } from "./database";
 import { globalErrorHandler, notFoundHandler } from "./middleware/errors";
 import authRouter from "./routes/auth.routes";
+import githubRouter from "./routes/github.routes";
+import repositoryRouter from "./routes/repository.routes";
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use(morgan(":method :url :status :res[content-length] - :response-time ms", 
 
 // Register REST Routes
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/github", githubRouter);
+app.use("/api/v1/repositories", repositoryRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {

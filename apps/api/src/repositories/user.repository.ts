@@ -1,41 +1,51 @@
-import { prisma } from "../database"
-import { UserProfile } from "../types/auth.types"
+import { prisma } from "../database";
+import { UserProfile } from "../types/auth.types";
 
 export class UserRepository {
-  async findById(id: string): Promise<UserProfile | null> {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    })
-    return user
+  async findByClerkId(clerkId: string): Promise<UserProfile | null> {
+    return prisma.user.findUnique({
+      where: { id: clerkId },
+    });
   }
 
   async findByEmail(email: string): Promise<UserProfile | null> {
-    const user = await prisma.user.findUnique({
+    return prisma.user.findUnique({
       where: { email },
-    })
-    return user
+    });
   }
 
-  async upsertUser(id: string, email: string, name?: string): Promise<UserProfile> {
-    const user = await prisma.user.upsert({
-      where: { id },
+  async create(data: { id: string; email: string; name?: string | null }): Promise<UserProfile> {
+    return prisma.user.create({
+      data: {
+        id: data.id,
+        email: data.email,
+        name: data.name ?? null,
+      },
+    });
+  }
+
+  async update(clerkId: string, data: { email?: string; name?: string | null }): Promise<UserProfile> {
+    return prisma.user.update({
+      where: { id: clerkId },
+      data: {
+        email: data.email,
+        name: data.name,
+      },
+    });
+  }
+
+  async upsert(data: { id: string; email: string; name?: string | null }): Promise<UserProfile> {
+    return prisma.user.upsert({
+      where: { id: data.id },
       update: {
-        email,
-        name,
+        email: data.email,
+        name: data.name ?? null,
       },
       create: {
-        id,
-        email,
-        name,
+        id: data.id,
+        email: data.email,
+        name: data.name ?? null,
       },
-    })
-    return user
-  }
-
-  async deleteUser(id: string): Promise<UserProfile> {
-    const user = await prisma.user.delete({
-      where: { id },
-    })
-    return user
+    });
   }
 }
