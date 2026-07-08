@@ -1,3 +1,4 @@
+console.log("🚀 Repository worker booted");
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "../queue/queue";
 import { QUEUE_NAME } from "../queue/repository.queue";
@@ -22,7 +23,7 @@ export const repositoryWorker = new Worker(
       await repositoryRepository.updateStatus(repositoryId, "CLONING");
       await repositoryService.cloneRepository(repositoryId, userId);
       logger.info(`[Job ${job.id}] Clone completed for repository ${repositoryId}`);
-      
+
       // 2. ANALYZING stage
       await job.updateProgress({ progress: 40, stage: "ANALYZING" });
       logger.info(`[Job ${job.id}] Analysis started for repository ${repositoryId}`);

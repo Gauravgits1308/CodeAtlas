@@ -17,6 +17,9 @@ export const config = {
   clerkSecretKey: process.env.CLERK_SECRET_KEY || "",
   githubClientId: process.env.GITHUB_CLIENT_ID || "",
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
+  openaiApiKey: process.env.OPENAI_API_KEY!,
+  openaiEmbeddingModel:
+    process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
 }
 
 // Warn about missing database connections

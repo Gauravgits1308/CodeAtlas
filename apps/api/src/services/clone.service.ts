@@ -8,7 +8,7 @@ export class CloneService {
   constructor(
     private gitService: GitService,
     private repositoryRepository: RepositoryRepository
-  ) {}
+  ) { }
 
   async cloneRepository(repositoryId: string, cloneUrl: string): Promise<void> {
     const storagePath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
@@ -21,6 +21,7 @@ export class CloneService {
 
     // Verify if already cloned to prevent overwrite conflicts
     if (fs.existsSync(storagePath) && (await this.gitService.exists(storagePath))) {
+      console.log("✅ SKIPPING CLONE - using updated CloneService");
       logger.info(`Repository ${repositoryId} already exists locally at path: ${storagePath}. Skipping clone step.`);
       // Update status to COMPLETED and sync timestamp for the skipped clone
       await this.repositoryRepository.updateStatus(repositoryId, "COMPLETED");
