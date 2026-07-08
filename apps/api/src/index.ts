@@ -11,6 +11,8 @@ import { globalErrorHandler, notFoundHandler } from "./middleware/errors";
 import authRouter from "./routes/auth.routes";
 import githubRouter from "./routes/github.routes";
 import repositoryRouter from "./routes/repository.routes";
+import jobRouter from "./routes/job.routes";
+import "./workers/repository.worker";
 
 const app = express();
 
@@ -30,6 +32,7 @@ app.use(morgan(":method :url :status :res[content-length] - :response-time ms", 
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/github", githubRouter);
 app.use("/api/v1/repositories", repositoryRouter);
+app.use("/api/v1/jobs", jobRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {

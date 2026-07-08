@@ -178,7 +178,7 @@ export class RepositoryService {
 
     logger.info(`Code processing and chunking started for repository: ${repositoryId}`);
 
-    await this.repositoryRepository.updateStatus(repo.id, "INDEXING");
+    await this.repositoryRepository.updateStatus(repo.id, "PROCESSING");
 
     try {
       // 1. Delete existing chunks

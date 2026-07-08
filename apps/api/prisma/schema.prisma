@@ -13,6 +13,7 @@ enum RepositoryStatus {
   CLONING
   ANALYZING
   INDEXING
+  PROCESSING
   COMPLETED
   FAILED
 }

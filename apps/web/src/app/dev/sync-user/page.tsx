@@ -79,7 +79,16 @@ interface AnalysisResponse {
 
 interface ProcessResponse {
   success: boolean
-  chunksCount: number
+  jobId: string
+  status: string
+}
+
+interface JobStatusResponse {
+  success: boolean
+  jobId: string
+  state: string
+  progress: number
+  stage: string
 }
 
 export default function DevSyncUserPage() {
@@ -113,11 +122,18 @@ export default function DevSyncUserPage() {
   const [analysisResponse, setAnalysisResponse] = React.useState<AnalysisResponse | null>(null)
   const [analysisError, setAnalysisError] = React.useState<string | null>(null)
 
-  // Repository Processing States
+  // Repository Background Processing States
   const [processingRepoId, setProcessingRepoId] = React.useState<string | null>(null)
-  const [processResponse, setProcessResponse] = React.useState<ProcessResponse | null>(null)
   const [processError, setProcessError] = React.useState<string | null>(null)
   const [processingTime, setProcessingTime] = React.useState<string | null>(null)
+
+  // Live Job Polling States
+  const [jobId, setJobId] = React.useState<string | null>(null)
+  const [jobState, setJobState] = React.useState<string | null>(null)
+  const [jobProgress, setJobProgress] = React.useState<number>(0)
+  const [jobStage, setJobStage] = React.useState<string | null>(null)
+
+  const pollTimerRef = React.useRef<NodeJS.Timeout | null>(null)
 
   // Fetch all imported repositories from PostgreSQL
   const fetchImportedRepos = React.useCallback(async () => {
@@ -136,6 +152,18 @@ export default function DevSyncUserPage() {
       setLoadingImported(false)
     }
   }, [])
+
+  // Clean up timers
+  const stopPolling = React.useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+  }, [])
+
+  React.useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
 
   // Retrieve imported list on mount after session cookies resolve
   React.useEffect(() => {
@@ -266,28 +294,70 @@ export default function DevSyncUserPage() {
     }
   }
 
+  const startPolling = React.useCallback((targetJobId: string) => {
+    stopPolling()
+    const startTime = Date.now()
+
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const statusResult = await api.get<JobStatusResponse>(`/v1/jobs/${targetJobId}`)
+        setJobState(statusResult.state)
+        setJobProgress(statusResult.progress)
+        setJobStage(statusResult.stage)
+
+        if (statusResult.state === "Completed") {
+          stopPolling()
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+          setProcessingTime(`${duration}s`)
+          setProcessingRepoId(null)
+          // Refresh list to update status to COMPLETED
+          await fetchImportedRepos()
+        } else if (statusResult.state === "Failed") {
+          stopPolling()
+          setProcessingRepoId(null)
+          setProcessError("Job failed during background worker execution.")
+          // Refresh list to update status to FAILED
+          await fetchImportedRepos()
+        }
+      } catch (err: unknown) {
+        stopPolling()
+        setProcessingRepoId(null)
+        if (err instanceof Error) {
+          setProcessError(err.message)
+        } else {
+          setProcessError("An error occurred while polling job status.")
+        }
+      }
+    }, 2000)
+  }, [stopPolling, fetchImportedRepos])
+
   const handleProcess = async (repoId: string) => {
     setProcessingRepoId(repoId)
-    setProcessResponse(null)
     setProcessError(null)
     setProcessingTime(null)
-    const startTime = Date.now()
+    setJobId(null)
+    setJobState("Queued")
+    setJobProgress(0)
+    setJobStage("Queued")
+
     try {
-      // POST to /api/v1/repositories/:id/process
+      // POST returns HTTP 202 immediately
       const result = await api.post<ProcessResponse>(`/v1/repositories/${repoId}/process`)
-      const endTime = Date.now()
-      setProcessingTime(`${((endTime - startTime) / 1000).toFixed(2)}s`)
-      setProcessResponse(result)
-      // Refresh database records list
-      await fetchImportedRepos()
+      setJobId(result.jobId)
+      setJobState("Queued")
+      setJobProgress(0)
+      setJobStage("Queued")
+
+      // Start live status polling
+      startPolling(result.jobId)
     } catch (err: unknown) {
+      stopPolling()
+      setProcessingRepoId(null)
       if (err instanceof Error) {
         setProcessError(err.message)
       } else {
-        setProcessError("An unknown error occurred while processing repository.")
+        setProcessError("An unknown error occurred while submitting processing job.")
       }
-    } finally {
-      setProcessingRepoId(null)
     }
   }
 
@@ -481,9 +551,10 @@ export default function DevSyncUserPage() {
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           repo.status === "COMPLETED" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
+                          repo.status === "QUEUED" ? "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 animate-pulse" :
                           repo.status === "CLONING" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
                           repo.status === "ANALYZING" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20 animate-pulse" :
-                          repo.status === "INDEXING" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 animate-pulse" :
+                          repo.status === "PROCESSING" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 animate-pulse" :
                           repo.status === "FAILED" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
                           "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
                         }`}>
@@ -492,7 +563,7 @@ export default function DevSyncUserPage() {
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{repo.defaultBranch}</td>
                       <td className="px-4 py-3 text-right">
-                        {repo.status === "COMPLETED" ? (
+                        {repo.status === "COMPLETED" || repo.status === "QUEUED" || repo.status === "CLONING" || repo.status === "ANALYZING" || repo.status === "PROCESSING" ? (
                           <div className="flex justify-end gap-2">
                             <button
                               onClick={() => handleAnalyze(repo.id)}
@@ -617,11 +688,29 @@ export default function DevSyncUserPage() {
               </div>
             )}
 
-            {/* Processing Logs */}
+            {/* Live Job Progress Display */}
             {processingRepoId !== null && (
-              <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <span>Extracting codebase files and generating overlapping text chunks...</span>
+              <div className="rounded-lg border border-primary/20 bg-[#1e1b4b]/20 p-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center space-x-3 text-primary animate-pulse">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <span>Processing Background Job...</span>
+                  </div>
+                  <span className="font-mono text-xs text-muted-foreground">Job ID: {jobId || "Assigning..."}</span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full bg-[#111827] rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${jobProgress}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Stage: <span className="text-foreground font-semibold uppercase">{jobStage || "Queued"}</span></span>
+                  <span>Progress: {jobProgress}%</span>
+                </div>
               </div>
             )}
 
@@ -632,32 +721,34 @@ export default function DevSyncUserPage() {
               </div>
             )}
 
-            {!!processResponse && (
-              <div className="rounded-lg border border-border/40 bg-[#030712] p-4 space-y-4 text-sm">
-                <span className="font-semibold text-purple-400 block">Processing Success Response:</span>
+            {jobState === "Completed" && (
+              <div className="rounded-lg border border-border/40 bg-[#030712] p-4 space-y-4 text-sm animate-fade-in">
+                <span className="font-semibold text-purple-400 block font-mono text-xs">Job Completed! Processing Stats:</span>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Files Processed</p>
                     <p className="text-lg font-bold text-foreground">
-                      {analysisResponse?.metrics?.filesCount !== undefined ? analysisResponse.metrics.filesCount : "Analyze repo first"}
+                      {analysisResponse?.metrics?.filesCount !== undefined ? analysisResponse.metrics.filesCount : "Synced from DB"}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Chunks Generated</p>
-                    <p className="text-lg font-bold text-foreground">{processResponse.chunksCount}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Avg Chunk Size</p>
+                    <p className="text-xs text-muted-foreground">Average Chunk Size</p>
                     <p className="text-lg font-bold text-foreground">
-                      {analysisResponse?.metrics?.linesCount !== undefined && processResponse.chunksCount > 0
-                        ? `${Math.round(analysisResponse.metrics.linesCount / processResponse.chunksCount)} lines`
-                        : "Analyze repo first"}
+                      {analysisResponse?.metrics?.linesCount !== undefined && jobProgress >= 100
+                        ? "Calculated in database"
+                        : "Ready"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Processing Duration</p>
                     <p className="text-lg font-bold text-foreground">{processingTime || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Background Status</p>
+                    <span className="inline-flex items-center rounded-full bg-green-500/10 px-2.5 py-0.5 text-xs font-semibold text-green-400 border border-green-500/20">
+                      COMPLETED
+                    </span>
                   </div>
                 </div>
               </div>

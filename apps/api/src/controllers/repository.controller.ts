@@ -1,10 +1,18 @@
 /// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from "express";
 import { RepositoryService, ImportRepositoryPayload } from "../services/repository.service";
+import { RepositoryJobService } from "../services/repository-job.service";
 import { asyncHandler, AppError } from "../utils/errors";
 
 export class RepositoryController {
-  constructor(private repositoryService: RepositoryService) {}
+  private repositoryJobService: RepositoryJobService;
+
+  constructor(
+    private repositoryService: RepositoryService,
+    repositoryJobService?: RepositoryJobService
+  ) {
+    this.repositoryJobService = repositoryJobService || new RepositoryJobService();
+  }
 
   importRepositories = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const userId = req.auth.userId;
@@ -117,11 +125,12 @@ export class RepositoryController {
     const userId = req.auth.userId;
     const { id } = req.params;
 
-    const result = await this.repositoryService.processRepository(id, userId);
+    const jobId = await this.repositoryJobService.enqueueRepository(id, userId);
 
-    res.status(200).json({
+    res.status(202).json({
       success: true,
-      chunksCount: result.chunksCount,
+      jobId,
+      status: "QUEUED",
     });
   });
 }

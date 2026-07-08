@@ -413,6 +413,9 @@
   .h-1\.5 {
     height: calc(var(--spacing) * 1.5);
   }
+  .h-2 {
+    height: calc(var(--spacing) * 2);
+  }
   .h-3 {
     height: calc(var(--spacing) * 3);
   }
@@ -962,6 +965,9 @@
   }
   .bg-\[\#0b0f19\] {
     background-color: #0b0f19;
+  }
+  .bg-\[\#1e1b4b\]\/20 {
+    background-color: color-mix(in oklab, #1e1b4b 20%, transparent);
   }
   .bg-\[\#10B981\]\/80 {
     background-color: color-mix(in oklab, #10B981 80%, transparent);
@@ -1721,6 +1727,10 @@
     --tw-duration: 300ms;
     transition-duration: 300ms;
   }
+  .duration-500 {
+    --tw-duration: 500ms;
+    transition-duration: 500ms;
+  }
   .outline-none {
     --tw-outline-style: none;
     outline-style: none;
@@ -1728,6 +1738,9 @@
   .select-none {
     -webkit-user-select: none;
     user-select: none;
+  }
+  .running {
+    animation-play-state: running;
   }
   .group-hover\:translate-x-0\.5 {
     &:is(:where(.group):hover *) {
