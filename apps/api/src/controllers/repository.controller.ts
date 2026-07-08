@@ -112,4 +112,16 @@ export class RepositoryController {
       },
     });
   });
+
+  processRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    const result = await this.repositoryService.processRepository(id, userId);
+
+    res.status(200).json({
+      success: true,
+      chunksCount: result.chunksCount,
+    });
+  });
 }

@@ -5,6 +5,10 @@ import { CloneService } from "./clone.service";
 import { GitService } from "./git.service";
 import { CodeMetricRepository } from "../repositories/code-metric.repository";
 import { RepositoryAnalysisService } from "./repository-analysis.service";
+import { CodeChunkRepository, CreateChunkInput } from "../repositories/code-chunk.repository";
+import { FileExtractionService } from "./file-extraction.service";
+import { ChunkingService } from "./chunking.service";
+import { logger } from "../utils/logger";
 
 export interface ImportRepositoryPayload {
   githubRepoId: string | number;
@@ -27,17 +31,26 @@ export class RepositoryService {
   private cloneService: CloneService;
   private codeMetricRepository: CodeMetricRepository;
   private repositoryAnalysisService: RepositoryAnalysisService;
+  private codeChunkRepository: CodeChunkRepository;
+  private fileExtractionService: FileExtractionService;
+  private chunkingService: ChunkingService;
 
   constructor(
     repositoryRepository: RepositoryRepository,
     cloneService?: CloneService,
     codeMetricRepository?: CodeMetricRepository,
-    repositoryAnalysisService?: RepositoryAnalysisService
+    repositoryAnalysisService?: RepositoryAnalysisService,
+    codeChunkRepository?: CodeChunkRepository,
+    fileExtractionService?: FileExtractionService,
+    chunkingService?: ChunkingService
   ) {
     this.repositoryRepository = repositoryRepository;
     this.cloneService = cloneService || new CloneService(new GitService(), repositoryRepository);
     this.codeMetricRepository = codeMetricRepository || new CodeMetricRepository();
     this.repositoryAnalysisService = repositoryAnalysisService || new RepositoryAnalysisService();
+    this.codeChunkRepository = codeChunkRepository || new CodeChunkRepository();
+    this.fileExtractionService = fileExtractionService || new FileExtractionService();
+    this.chunkingService = chunkingService || new ChunkingService();
   }
 
   async importRepositories(userId: string, payloads: ImportRepositoryPayload[]): Promise<Repository[]> {
@@ -144,6 +157,57 @@ export class RepositoryService {
 
       return metrics;
     } catch (error) {
+      await this.repositoryRepository.updateStatus(repo.id, "FAILED");
+      throw error;
+    }
+  }
+
+  async processRepository(repositoryId: string, userId: string): Promise<{ chunksCount: number }> {
+    const repo = await this.repositoryRepository.findById(repositoryId);
+    if (!repo) {
+      throw new AppError("Repository not found.", 404);
+    }
+
+    if (repo.userId !== userId) {
+      throw new AppError("Forbidden: You do not own this repository.", 403);
+    }
+
+    if (repo.status !== "COMPLETED" && repo.status !== "FAILED") {
+      throw new AppError("Repository codebase must be cloned successfully before triggering indexing.", 400);
+    }
+
+    logger.info(`Code processing and chunking started for repository: ${repositoryId}`);
+
+    await this.repositoryRepository.updateStatus(repo.id, "INDEXING");
+
+    try {
+      // 1. Delete existing chunks
+      await this.codeChunkRepository.deleteByRepository(repo.id);
+
+      // 2. Extract files
+      const files = this.fileExtractionService.extractFiles(repo.id);
+      logger.info(`Extracted ${files.length} supported source files for repository: ${repositoryId}`);
+
+      // 3. Chunk files
+      const allChunks: CreateChunkInput[] = [];
+      for (const file of files) {
+        const fileChunks = this.chunkingService.chunkFile(repo.id, file.filePath, file.content);
+        allChunks.push(...fileChunks);
+      }
+
+      logger.info(`Generated ${allChunks.length} chunks for repository: ${repositoryId}`);
+
+      // 4. Save chunks
+      if (allChunks.length > 0) {
+        await this.codeChunkRepository.createMany(allChunks);
+      }
+
+      await this.repositoryRepository.updateStatus(repo.id, "COMPLETED");
+      logger.info(`Code processing and chunking completed successfully for repository: ${repositoryId}`);
+
+      return { chunksCount: allChunks.length };
+    } catch (error) {
+      logger.error(`Code processing failed for repository: ${repositoryId}`, error);
       await this.repositoryRepository.updateStatus(repo.id, "FAILED");
       throw error;
     }

@@ -47,6 +47,7 @@ model Repository {
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   metrics       CodeMetric?
   syncLogs      SyncLog[]
+  chunks        CodeChunk[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -77,4 +78,17 @@ model SyncLog {
   errorMessage String?
   startedAt    DateTime   @default(now())
   finishedAt   DateTime?
+}
+
+model CodeChunk {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  filePath     String
+  startLine    Int
+  endLine      Int
+  content      String
+  createdAt    DateTime   @default(now())
+
+  @@index([repositoryId])
 }

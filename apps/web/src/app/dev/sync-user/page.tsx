@@ -77,6 +77,11 @@ interface AnalysisResponse {
   metrics: AnalysisMetrics
 }
 
+interface ProcessResponse {
+  success: boolean
+  chunksCount: number
+}
+
 export default function DevSyncUserPage() {
   // User Synchronization States
   const [loading, setLoading] = React.useState(false)
@@ -107,6 +112,12 @@ export default function DevSyncUserPage() {
   const [analyzingRepoId, setAnalyzingRepoId] = React.useState<string | null>(null)
   const [analysisResponse, setAnalysisResponse] = React.useState<AnalysisResponse | null>(null)
   const [analysisError, setAnalysisError] = React.useState<string | null>(null)
+
+  // Repository Processing States
+  const [processingRepoId, setProcessingRepoId] = React.useState<string | null>(null)
+  const [processResponse, setProcessResponse] = React.useState<ProcessResponse | null>(null)
+  const [processError, setProcessError] = React.useState<string | null>(null)
+  const [processingTime, setProcessingTime] = React.useState<string | null>(null)
 
   // Fetch all imported repositories from PostgreSQL
   const fetchImportedRepos = React.useCallback(async () => {
@@ -255,19 +266,44 @@ export default function DevSyncUserPage() {
     }
   }
 
+  const handleProcess = async (repoId: string) => {
+    setProcessingRepoId(repoId)
+    setProcessResponse(null)
+    setProcessError(null)
+    setProcessingTime(null)
+    const startTime = Date.now()
+    try {
+      // POST to /api/v1/repositories/:id/process
+      const result = await api.post<ProcessResponse>(`/v1/repositories/${repoId}/process`)
+      const endTime = Date.now()
+      setProcessingTime(`${((endTime - startTime) / 1000).toFixed(2)}s`)
+      setProcessResponse(result)
+      // Refresh database records list
+      await fetchImportedRepos()
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setProcessError(err.message)
+      } else {
+        setProcessError("An unknown error occurred while processing repository.")
+      }
+    } finally {
+      setProcessingRepoId(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#030712] p-6 text-foreground">
       <div className="w-full max-w-5xl rounded-xl border border-border/40 bg-[#0b0f19] p-6 shadow-2xl mt-10">
         <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Auth, GitHub & Repo Debugger</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          Synchronize user profiles, discover remote repositories, and analyze codebase metrics.
+          Synchronize user profiles, discover remote repositories, and run semantic processing partitions.
         </p>
 
         {/* Buttons Action Bar */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row">
           <button
             onClick={handleSync}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null || processingRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-4 py-2 font-semibold text-white shadow-md transition-all hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Synchronizing..." : "Synchronize User"}
@@ -275,7 +311,7 @@ export default function DevSyncUserPage() {
           
           <button
             onClick={handleFetchRepos}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null || processingRepoId !== null}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loadingRepos ? "Fetching repos..." : "Fetch GitHub Repositories"}
@@ -283,7 +319,7 @@ export default function DevSyncUserPage() {
 
           <button
             onClick={fetchImportedRepos}
-            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null || loadingImported}
+            disabled={loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null || analyzingRepoId !== null || processingRepoId !== null || loadingImported}
             className="flex-1 inline-flex h-11 items-center justify-center rounded-lg border border-border/60 bg-[#111827] px-4 py-2 font-semibold text-foreground transition-all hover:bg-muted/40 focus:outline-none disabled:opacity-50 cursor-pointer"
           >
             {loadingImported ? "Refreshing DB..." : "Refresh Imported List"}
@@ -368,7 +404,7 @@ export default function DevSyncUserPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => handleImport(repo)}
-                          disabled={importingRepoId !== null || loading || loadingRepos || cloningRepoId !== null || analyzingRepoId !== null}
+                          disabled={importingRepoId !== null || loading || loadingRepos || cloningRepoId !== null || analyzingRepoId !== null || processingRepoId !== null}
                           className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
                         >
                           {importingRepoId === repo.id ? "Importing..." : "Import"}
@@ -447,6 +483,7 @@ export default function DevSyncUserPage() {
                           repo.status === "COMPLETED" ? "bg-green-500/10 text-green-400 border border-green-500/20" :
                           repo.status === "CLONING" ? "bg-primary/10 text-primary border border-primary/20 animate-pulse" :
                           repo.status === "ANALYZING" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20 animate-pulse" :
+                          repo.status === "INDEXING" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 animate-pulse" :
                           repo.status === "FAILED" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
                           "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
                         }`}>
@@ -456,17 +493,26 @@ export default function DevSyncUserPage() {
                       <td className="px-4 py-3 font-mono text-xs">{repo.defaultBranch}</td>
                       <td className="px-4 py-3 text-right">
                         {repo.status === "COMPLETED" ? (
-                          <button
-                            onClick={() => handleAnalyze(repo.id)}
-                            disabled={analyzingRepoId !== null || loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
-                            className="inline-flex h-8 items-center justify-center rounded bg-green-600 px-3 text-xs font-semibold text-white shadow-md hover:bg-green-700 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
-                          >
-                            {analyzingRepoId === repo.id ? "Analyzing..." : "Analyze Repository"}
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => handleAnalyze(repo.id)}
+                              disabled={analyzingRepoId !== null || processingRepoId !== null || loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
+                              className="inline-flex h-8 items-center justify-center rounded bg-green-600 px-3 text-xs font-semibold text-white shadow-md hover:bg-green-700 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
+                            >
+                              {analyzingRepoId === repo.id ? "Analyzing..." : "Analyze"}
+                            </button>
+                            <button
+                              onClick={() => handleProcess(repo.id)}
+                              disabled={analyzingRepoId !== null || processingRepoId !== null || loading || loadingRepos || importingRepoId !== null || cloningRepoId !== null}
+                              className="inline-flex h-8 items-center justify-center rounded bg-purple-600 px-3 text-xs font-semibold text-white shadow-md hover:bg-purple-700 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
+                            >
+                              {processingRepoId === repo.id ? "Processing..." : "Process Repository"}
+                            </button>
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleClone(repo.id)}
-                            disabled={cloningRepoId !== null || loading || loadingRepos || importingRepoId !== null || analyzingRepoId !== null}
+                            disabled={cloningRepoId !== null || loading || loadingRepos || importingRepoId !== null || analyzingRepoId !== null || processingRepoId !== null}
                             className="inline-flex h-8 items-center justify-center rounded bg-primary px-3 text-xs font-semibold text-white shadow-md hover:bg-primary/95 focus:outline-none disabled:opacity-50 cursor-pointer transition-all"
                           >
                             {cloningRepoId === repo.id ? "Cloning..." : "Clone Repository"}
@@ -480,7 +526,7 @@ export default function DevSyncUserPage() {
             </div>
           )}
 
-          {/* Display Clone & Analysis Logs */}
+          {/* Display Clone, Analysis & Processing Logs */}
           <div className="mt-4 space-y-3">
             {cloningRepoId !== null && (
               <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
@@ -566,6 +612,52 @@ export default function DevSyncUserPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Processing Logs */}
+            {processingRepoId !== null && (
+              <div className="flex items-center space-x-3 text-sm text-primary animate-pulse py-1">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span>Extracting codebase files and generating overlapping text chunks...</span>
+              </div>
+            )}
+
+            {processError && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+                <span className="font-semibold block mb-1">Processing Error:</span>
+                <p className="font-mono">{processError}</p>
+              </div>
+            )}
+
+            {!!processResponse && (
+              <div className="rounded-lg border border-border/40 bg-[#030712] p-4 space-y-4 text-sm">
+                <span className="font-semibold text-purple-400 block">Processing Success Response:</span>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Files Processed</p>
+                    <p className="text-lg font-bold text-foreground">
+                      {analysisResponse?.metrics?.filesCount !== undefined ? analysisResponse.metrics.filesCount : "Analyze repo first"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Chunks Generated</p>
+                    <p className="text-lg font-bold text-foreground">{processResponse.chunksCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Avg Chunk Size</p>
+                    <p className="text-lg font-bold text-foreground">
+                      {analysisResponse?.metrics?.linesCount !== undefined && processResponse.chunksCount > 0
+                        ? `${Math.round(analysisResponse.metrics.linesCount / processResponse.chunksCount)} lines`
+                        : "Analyze repo first"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Processing Duration</p>
+                    <p className="text-lg font-bold text-foreground">{processingTime || "N/A"}</p>
                   </div>
                 </div>
               </div>

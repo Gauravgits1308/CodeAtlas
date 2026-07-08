@@ -23,4 +23,7 @@ router.post("/:id/clone", requireAuth, repositoryController.cloneRepository);
 // POST /api/v1/repositories/:id/analyze
 router.post("/:id/analyze", requireAuth, repositoryController.analyzeRepository);
 
+// POST /api/v1/repositories/:id/process
+router.post("/:id/process", requireAuth, repositoryController.processRepository);
+
 export default router;
