@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.0 (2026-07-08)
+- Completed Sprint 2.2: Authentication Backend Foundation.
+- Scaffolded authentication business logic inside `apps/api/src/` complying with Clean Architecture layers (Controllers, Use Cases, Services, Repositories, Types).
+- Installed `@clerk/express` and integrated the session identity middlewares to protect routes.
+- Created `src/config/clerk.ts` to validate presence of Clerk secret keys at server startup and export client instances.
+- Implemented user lookup (`/me`) and account profile synchronization (`/sync`) REST routes, caching Clerk sessions to PostgreSQL.
+
 ## v1.2.0 (2026-07-07)
 - Completed Sprint 1.2: Project Architecture Scaffolding.
 - Converted sign-in and sign-up routes to dynamic catch-all paths (`[[...sign-in]]` and `[[...sign-up]]`) matching Clerk v7 routing standards.

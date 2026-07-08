@@ -13,6 +13,7 @@
     "prisma:migrate": "prisma db push"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.37",
     "@prisma/client": "^5.10.0",
     "bullmq": "^5.8.0",
     "cors": "^2.8.5",
