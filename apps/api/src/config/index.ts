@@ -1,3 +1,4 @@
+console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY);
 import dotenv from "dotenv"
 import path from "path"
 

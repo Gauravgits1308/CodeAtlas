@@ -1,35 +1,61 @@
-# Walkthrough - Milestone 2.6.2 OpenAI Embedding Service Testing Endpoint
+# Walkthrough - Milestone 2.6.3 AI Provider Pattern Refactoring
 
-A temporary, development-only Express endpoint has been successfully created to test the OpenAI embedding generation capabilities.
+The AI embedding module has been successfully refactored using the **Provider Pattern**. This isolates API client initializations and response parsing formats from core business validation and logging steps, allowing CodeAtlas to seamlessly support future providers such as Gemini or Ollama.
 
 ## Files Created
-- **Dev Controller** ([apps/api/src/controllers/dev.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/dev.controller.ts)):
-  - Implements the `DevController` class with a `testEmbedding` action.
-  - Validates that the input body contains a `text` string, throwing a `400 Bad Request` if invalid.
-  - Invokes `EmbeddingService.generateEmbedding(text)`.
-  - Returns a payload including the dimension count and the first 5 float elements of the vector.
-- **Dev Router** ([apps/api/src/routes/dev.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/dev.routes.ts)):
-  - Declares the REST route `POST /embedding` and connects the dev controller handler.
+- **AI Provider Interface** ([apps/api/src/services/ai/providers/AIProvider.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/ai/providers/AIProvider.ts)):
+  - Defines the interface contract requiring `generateEmbedding(text: string): Promise<number[]>`.
+- **OpenRouter Provider** ([apps/api/src/services/ai/providers/OpenRouterProvider.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/ai/providers/OpenRouterProvider.ts)):
+  - Implements the `AIProvider` contract.
+  - Houses OpenRouter-specific configurations (setting base URL to `https://openrouter.ai/api/v1` and using model definitions).
+  - Handles OpenAI Node SDK client initialization and response payload parsing.
 
 ## Files Modified
-- **Server Index** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Imported `devRouter`.
-  - Mounted the router under `/api/v1/dev` globally.
+- **Embedding Service** ([apps/api/src/services/ai/embedding.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/ai/embedding.service.ts)):
+  - Refactored to depend strictly on the `AIProvider` abstraction.
+  - Constructor accepts an optional custom provider, defaulting to `OpenRouterProvider`.
+  - Preserves input trimming, empty-check validations, Winston logging calls, and `AppError` exception mappings.
+  - Retains the exact public signature `generateEmbedding(text: string): Promise<number[]>` to avoid breaking change issues.
 
 ---
 
-## Testing & Validation Instructions
+## AI Module Provider Architecture
+
+```mermaid
+classDiagram
+    class AIProvider {
+        <<interface>>
+        +generateEmbedding(text: string) Promise~number[]~
+    }
+    
+    class OpenRouterProvider {
+        -openai: OpenAI
+        +generateEmbedding(text: string) Promise~number[]~
+    }
+    
+    class EmbeddingService {
+        -provider: AIProvider
+        +generateEmbedding(text: string) Promise~number[]~
+    }
+    
+    AIProvider <|.. OpenRouterProvider : implements
+    EmbeddingService --> AIProvider : depends on
+```
+
+---
+
+## Verification & Testing Instructions
 
 1. **Boot dev backend**:
    ```bash
    npm run dev -w apps/api
    ```
 
-2. **Trigger embedding test request**:
-   - Issue a request targeting the dev endpoint:
-     ```bash
-     curl -i -X POST -H "Content-Type: application/json" -d '{"text": "Hello World"}' http://localhost:4000/api/v1/dev/embedding
-     ```
+2. **Trigger request to temporary dev route**:
+   Verify that embedding generation functions as expected after refactoring:
+   ```bash
+   curl -i -X POST -H "Content-Type: application/json" -d '{"text": "Hello Refactored Provider Pattern!"}' http://localhost:4000/api/v1/dev/embedding
+   ```
    *Expected Response:*
    `HTTP/1.1 200 OK`
    ```json
@@ -37,12 +63,6 @@ A temporary, development-only Express endpoint has been successfully created to 
      "success": true,
      "message": "TEMPORARY DEVELOPMENT ENDPOINT: Embedding generated successfully.",
      "dimensions": 1536,
-     "preview": [
-       0.012345,
-       -0.006789,
-       0.021011,
-       -0.014151,
-       0.009876
-     ]
+     "preview": [...]
    }
    ```

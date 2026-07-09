@@ -1,16 +1,18 @@
-import OpenAI from "openai";
 import { config } from "../../config";
 import { logger } from "../../utils/logger";
 import { AppError } from "../../utils/errors";
-
-// Create a singleton OpenAI client instance
-const openai = new OpenAI({
-  apiKey: config.openaiApiKey || "dummy-key",
-});
+import { AIProvider } from "./providers/AIProvider";
+import { OpenRouterProvider } from "./providers/OpenRouterProvider";
 
 export class EmbeddingService {
+  private provider: AIProvider;
+
+  constructor(provider?: AIProvider) {
+    this.provider = provider || new OpenRouterProvider();
+  }
+
   /**
-   * Generates a text embedding vector using OpenAI Embeddings API.
+   * Generates a text embedding vector using the configured AI provider.
    *
    * @param text The input text string to embed.
    * @returns A promise that resolves to the embedding vector (array of numbers).
@@ -28,16 +30,7 @@ export class EmbeddingService {
     logger.info(`Embedding request started for model: ${config.openaiEmbeddingModel}`);
 
     try {
-      const response = await openai.embeddings.create({
-        model: config.openaiEmbeddingModel,
-        input: trimmedText,
-      });
-
-      const embedding = response.data?.[0]?.embedding;
-      if (!embedding || !Array.isArray(embedding)) {
-        throw new AppError("Failed to extract embedding vector from OpenAI response.", 500);
-      }
-
+      const embedding = await this.provider.generateEmbedding(trimmedText);
       logger.info("Embedding generated successfully");
       return embedding;
     } catch (error: unknown) {
