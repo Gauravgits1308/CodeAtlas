@@ -1,53 +1,56 @@
-# Walkthrough - Milestone 3.2.2 Repository Processing Service Decoupling
+# Walkthrough - Milestone 3.2.3 Repository Indexing Embedding Integration
 
-The indexing and chunk division pipeline has been successfully extracted into a dedicated service, leaving `RepositoryService` strictly as an orchestrator, adhering to the **Single Responsibility Principle**.
-
-## Files Created
-- **Repository Processing Service** ([apps/api/src/services/repository-processing.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-processing.service.ts)):
-  - Implements the new `RepositoryProcessingService` class.
-  - Takes responsibility for code extraction, sliding window chunking, status database transitions, and Winston logging.
-  - Injects `RepositoryRepository`, `CodeChunkRepository`, `FileExtractionService`, and `ChunkingService` via constructor dependency injection.
+The codebase indexing pipeline has been successfully upgraded to perform sliding window code chunk partition generation, invoke the pluggable OpenRouter `EmbeddingService`, and persist high-dimensional vector embeddings in PostgreSQL.
 
 ## Files Modified
-- **Repository Service** ([apps/api/src/services/repository.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository.service.ts)):
-  - Injects `RepositoryProcessingService` inside the constructor.
-  - Cleared legacy chunking/extraction dependencies.
-  - Refactored `processRepository()` to perform only repository existence and ownership validation before delegating execution.
+- **Repository Processing Service** ([apps/api/src/services/repository-processing.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-processing.service.ts)):
+  - Injected `EmbeddingService` (via the existing `createAIProvider` factory) and `ChunkEmbeddingRepository` inside the constructor.
+  - Replaced the bulk `createMany` flow with a sequential per-chunk pipeline:
+    1. Persist the chunk using `CodeChunkRepository.create()`.
+    2. Invoke `EmbeddingService.generateEmbedding(content)`.
+    3. Persist the high-dimensional vector using `ChunkEmbeddingRepository.create()` with provider/model/dimensions metadata.
+  - Kept all existing validations, Winston logs, and error handler blocks intact.
 
 ---
 
-## Architectural Responsibility Delegation
+## Code Ingestion Flow Layout
 
 ```mermaid
 graph TD
-    Client["Express Route Controller / Worker Thread"]
-    RepoService["RepositoryService (services/repository.service.ts)"]
-    ProcessingService["RepositoryProcessingService (services/repository-processing.service.ts)"]
-    DB["PostgreSQL (Prisma Client)"]
-    Extractor["FileExtractionService"]
+    File["Cloned File Paths"]
     Chunker["ChunkingService"]
+    ChunkRepo["CodeChunkRepository"]
+    AIService["EmbeddingService"]
+    VectorRepo["ChunkEmbeddingRepository"]
+    DB[("PostgreSQL + pgvector")]
 
-    Client -- "processRepository(id, userId)" --> RepoService
-    Note over RepoService: Validation Phase:<br>1. Existence checks<br>2. Ownership validation
-    RepoService -- "processRepository(id)" --> ProcessingService
-    
-    Note over ProcessingService: Execution Phase:<br>1. Status -> PROCESSING<br>2. Delete previous chunks<br>3. Extract & Chunk files<br>4. Bulk save chunks<br>5. Status -> COMPLETED
-    ProcessingService -- "Update Status" --> DB
-    ProcessingService -- "extractFiles()" --> Extractor
-    ProcessingService -- "chunkFile()" --> Chunker
-    ProcessingService -- "createMany()" --> DB
+    File -- "chunkFile()" --> Chunker
+    Chunker -- "1. create(chunkInput)" --> ChunkRepo
+    ChunkRepo -- "Save CodeChunk record" --> DB
+    ChunkRepo -- "Return created chunk ID" --> AIService
+    AIService -- "2. generateEmbedding(content)" --> AIService
+    AIService -- "Return number[] vector" --> VectorRepo
+    VectorRepo -- "3. create(embeddingInput)" --> VectorRepo
+    VectorRepo -- "CAST(vectorString AS vector) insert" --> DB
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Start workspace**:
+1. **Start workspaces**:
    ```bash
    npm run dev
    ```
 
-2. **Trigger indexing process**:
-   - Navigate to `http://localhost:3000/dev/sync-user`.
-   * Click **Process Repository** for any imported repository.
-   * Verify that the progress completes smoothly through cloning -> analyzing -> processing -> completed and database records are updated as before.
+2. **Trigger ingestion**:
+   * Navigate to the dashboard at `http://localhost:3000/dev/sync-user`.
+   * Click **Process Repository** for any repository.
+   * As the background worker triggers:
+     - Each code chunk is persisted.
+     - Vector embedding endpoints are queried.
+     - High-dimensional vectors are stored in the database.
+   * Verify using PostgreSQL that table rows exist with non-empty embedding properties:
+     ```bash
+     docker exec -it codeatlas-postgres psql -U postgres -d codeatlas -c "SELECT count(*) FROM \"ChunkEmbedding\";"
+     ```

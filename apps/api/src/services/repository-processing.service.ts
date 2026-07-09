@@ -1,7 +1,11 @@
 import { RepositoryRepository } from "../repositories/repository.repository";
-import { CodeChunkRepository, CreateChunkInput } from "../repositories/code-chunk.repository";
+import { CodeChunkRepository } from "../repositories/code-chunk.repository";
+import { ChunkEmbeddingRepository } from "../repositories/chunk-embedding.repository";
 import { FileExtractionService } from "./file-extraction.service";
 import { ChunkingService } from "./chunking.service";
+import { EmbeddingService } from "./ai/embedding.service";
+import { createAIProvider } from "./ai/providers/provider.factory";
+import { config } from "../config";
 import { logger } from "../utils/logger";
 import { AppError } from "../utils/errors";
 
@@ -10,24 +14,30 @@ export class RepositoryProcessingService {
   private codeChunkRepository: CodeChunkRepository;
   private fileExtractionService: FileExtractionService;
   private chunkingService: ChunkingService;
+  private embeddingService: EmbeddingService;
+  private chunkEmbeddingRepository: ChunkEmbeddingRepository;
 
   constructor(
     repositoryRepository?: RepositoryRepository,
     codeChunkRepository?: CodeChunkRepository,
     fileExtractionService?: FileExtractionService,
-    chunkingService?: ChunkingService
+    chunkingService?: ChunkingService,
+    embeddingService?: EmbeddingService,
+    chunkEmbeddingRepository?: ChunkEmbeddingRepository
   ) {
     this.repositoryRepository = repositoryRepository || new RepositoryRepository();
     this.codeChunkRepository = codeChunkRepository || new CodeChunkRepository();
     this.fileExtractionService = fileExtractionService || new FileExtractionService();
     this.chunkingService = chunkingService || new ChunkingService();
+    this.embeddingService = embeddingService || new EmbeddingService(createAIProvider());
+    this.chunkEmbeddingRepository = chunkEmbeddingRepository || new ChunkEmbeddingRepository();
   }
 
   /**
-   * Performs the complete repository indexing codebase pipeline (file extraction, chunking, and db persistence).
+   * Performs the complete repository indexing codebase pipeline (file extraction, chunking, embedding, and db persistence).
    *
    * @param repositoryId The ID of the repository to process.
-   * @returns A promise resolving to the total count of chunks generated.
+   * @returns A promise resolving to the total count of chunks generated and embedded.
    */
   async processRepository(repositoryId: string): Promise<{ chunksCount: number }> {
     const repo = await this.repositoryRepository.findById(repositoryId);
@@ -44,31 +54,41 @@ export class RepositoryProcessingService {
     await this.repositoryRepository.updateStatus(repo.id, "PROCESSING");
 
     try {
-      // 1. Delete existing chunks
+      // 1. Delete existing chunks (associated embeddings will cascade delete due to DB constraints)
       await this.codeChunkRepository.deleteByRepository(repo.id);
 
       // 2. Extract files
       const files = this.fileExtractionService.extractFiles(repo.id);
       logger.info(`Extracted ${files.length} supported source files for repository: ${repositoryId}`);
 
-      // 3. Chunk files
-      const allChunks: CreateChunkInput[] = [];
+      // 3. Chunk, embed, and store sequentially
+      let totalChunksCount = 0;
       for (const file of files) {
         const fileChunks = this.chunkingService.chunkFile(repo.id, file.filePath, file.content);
-        allChunks.push(...fileChunks);
-      }
+        for (const chunkInput of fileChunks) {
+          // Persist the chunk to PostgreSQL to obtain its created ID
+          const createdChunk = await this.codeChunkRepository.create(chunkInput);
+          
+          // Generate embedding for the chunk content
+          const embeddingVector = await this.embeddingService.generateEmbedding(createdChunk.content);
+          
+          // Persist embedding using ChunkEmbeddingRepository
+          await this.chunkEmbeddingRepository.create({
+            chunkId: createdChunk.id,
+            provider: config.aiProvider,
+            model: config.openrouterEmbeddingModel,
+            dimensions: embeddingVector.length,
+            embedding: embeddingVector,
+          });
 
-      logger.info(`Generated ${allChunks.length} chunks for repository: ${repositoryId}`);
-
-      // 4. Save chunks
-      if (allChunks.length > 0) {
-        await this.codeChunkRepository.createMany(allChunks);
+          totalChunksCount++;
+        }
       }
 
       await this.repositoryRepository.updateStatus(repo.id, "COMPLETED");
-      logger.info(`Code processing and chunking completed successfully for repository: ${repositoryId}`);
+      logger.info(`Code processing, chunking, and embedding completed successfully for repository: ${repositoryId}. Total chunks: ${totalChunksCount}`);
 
-      return { chunksCount: allChunks.length };
+      return { chunksCount: totalChunksCount };
     } catch (error) {
       logger.error(`Code processing failed for repository: ${repositoryId}`, error);
       await this.repositoryRepository.updateStatus(repo.id, "FAILED");
