@@ -2,10 +2,10 @@
   "/favicon.ico/route": "/favicon.ico",
   "/_not-found/page": "/_not-found",
   "/dev/sync-user/page": "/dev/sync-user",
-  "/(auth)/forgot-password/page": "/forgot-password",
-  "/(auth)/verify-email/page": "/verify-email",
   "/(auth)/sign-in/[[...sign-in]]/page": "/sign-in/[[...sign-in]]",
+  "/(auth)/sign-up/[[...sign-up]]/page": "/sign-up/[[...sign-up]]",
+  "/(auth)/verify-email/page": "/verify-email",
   "/(marketing)/page": "/",
-  "/(dashboard)/dashboard/page": "/dashboard",
-  "/(auth)/sign-up/[[...sign-up]]/page": "/sign-up/[[...sign-up]]"
+  "/(auth)/forgot-password/page": "/forgot-password",
+  "/(dashboard)/dashboard/page": "/dashboard"
 }

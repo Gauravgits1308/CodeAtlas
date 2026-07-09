@@ -21,6 +21,10 @@ export const config = {
   openaiApiKey: process.env.OPENAI_API_KEY!,
   openaiEmbeddingModel:
     process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
+  aiProvider: process.env.AI_PROVIDER || "openrouter",
+  openrouterApiKey: process.env.OPENROUTER_API_KEY || "",
+  openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+  openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "text-embedding-3-small",
 }
 
 // Warn about missing database connections

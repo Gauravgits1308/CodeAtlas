@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import { EmbeddingService } from "../services/ai/embedding.service";
+import { OpenRouterProvider } from "../services/ai/providers/OpenRouterProvider";
 import { asyncHandler, AppError } from "../utils/errors";
 
-const embeddingService = new EmbeddingService();
+const provider = new OpenRouterProvider();
+const embeddingService = new EmbeddingService(provider);
 
 export class DevController {
   /**

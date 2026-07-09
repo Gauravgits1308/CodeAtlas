@@ -1,33 +1,23 @@
-import { config } from "../../config";
 import { logger } from "../../utils/logger";
 import { AppError } from "../../utils/errors";
 import { AIProvider } from "./providers/AIProvider";
-import { OpenRouterProvider } from "./providers/OpenRouterProvider";
 
 export class EmbeddingService {
-  private provider: AIProvider;
-
-  constructor(provider?: AIProvider) {
-    this.provider = provider || new OpenRouterProvider();
-  }
+  constructor(private provider: AIProvider) {}
 
   /**
-   * Generates a text embedding vector using the configured AI provider.
+   * Generates a text embedding vector using the injected AI provider.
    *
    * @param text The input text string to embed.
    * @returns A promise that resolves to the embedding vector (array of numbers).
    */
   async generateEmbedding(text: string): Promise<number[]> {
-    if (!config.openaiApiKey) {
-      throw new AppError("OpenAI API key is missing. Please configure OPENAI_API_KEY.", 500);
-    }
-
     const trimmedText = text.trim();
     if (!trimmedText) {
       throw new AppError("Input text for embedding generation cannot be empty or whitespace-only.", 400);
     }
 
-    logger.info(`Embedding request started for model: ${config.openaiEmbeddingModel}`);
+    logger.info("Embedding request started");
 
     try {
       const embedding = await this.provider.generateEmbedding(trimmedText);
