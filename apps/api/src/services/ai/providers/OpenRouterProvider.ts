@@ -2,13 +2,18 @@ import OpenAI from "openai";
 import { config } from "../../../config";
 import { AIProvider } from "./AIProvider";
 import { logger } from "../../../utils/logger";
+import { AppError } from "../../../utils/errors";
 
 export class OpenRouterProvider implements AIProvider {
   private openai: OpenAI;
 
   constructor() {
     const apiKey = config.openrouterApiKey;
-    const baseURL = config.openrouterBaseUrl || "https://openrouter.ai/api/v1";
+    const baseURL = config.openrouterBaseUrl;
+
+    if (!baseURL) {
+      throw new AppError("OPENROUTER_BASE_URL is not configured.", 500);
+    }
 
     logger.info(`Initializing OpenRouterProvider with baseURL: ${baseURL}`);
 
@@ -23,11 +28,15 @@ export class OpenRouterProvider implements AIProvider {
    */
   async generateEmbedding(text: string): Promise<number[]> {
     if (!config.openrouterApiKey) {
-      throw new Error("OpenRouter API key is missing. Please configure OPENROUTER_API_KEY.");
+      throw new AppError("OpenRouter API key is missing. Please configure OPENROUTER_API_KEY.", 500);
     }
 
-    const model = config.openrouterEmbeddingModel || "text-embedding-3-small";
-    logger.info(`OpenRouter embedding request started using model: ${model}`);
+    if (!config.openrouterEmbeddingModel) {
+      throw new AppError("OPENROUTER_EMBEDDING_MODEL is not configured.", 500);
+    }
+
+    const model = config.openrouterEmbeddingModel;
+    logger.info(`Sending embedding API request to OpenRouter model: ${model}`);
 
     try {
       const response = await this.openai.embeddings.create({
@@ -37,15 +46,18 @@ export class OpenRouterProvider implements AIProvider {
 
       const embedding = response.data?.[0]?.embedding;
       if (!embedding || !Array.isArray(embedding)) {
-        throw new Error("Invalid response format received from OpenRouter API.");
+        throw new AppError("Invalid response format received from OpenRouter API.", 500);
       }
 
-      logger.info("OpenRouter embedding response successfully received and parsed");
+      logger.info("OpenRouter API embedding response successfully received");
       return embedding;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error(`OpenRouter embedding generation failed: ${err.message}`, err);
-      throw err;
+      logger.error(`OpenRouter API request failed: ${err.message}`, err);
+      if (err instanceof AppError) {
+        throw err;
+      }
+      throw new AppError(`OpenRouter API request failed: ${err.message}`, 500);
     }
   }
 }

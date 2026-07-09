@@ -1,4 +1,3 @@
-console.log("OPENAI_API_KEY:", process.env.OPENAI_API_KEY);
 import dotenv from "dotenv"
 import path from "path"
 
@@ -18,9 +17,6 @@ export const config = {
   clerkSecretKey: process.env.CLERK_SECRET_KEY || "",
   githubClientId: process.env.GITHUB_CLIENT_ID || "",
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
-  openaiApiKey: process.env.OPENAI_API_KEY!,
-  openaiEmbeddingModel:
-    process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
   aiProvider: process.env.AI_PROVIDER || "openrouter",
   openrouterApiKey: process.env.OPENROUTER_API_KEY || "",
   openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
