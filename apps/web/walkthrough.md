@@ -1,43 +1,53 @@
-# Walkthrough - Milestone 3.2.1 Chunk Embedding Repository
+# Walkthrough - Milestone 3.2.2 Repository Processing Service Decoupling
 
-The new database repository responsible for managing vector database writes for CodeAtlas is now fully implemented. It encapsulates raw parameterized PostgreSQL queries safely, formats inputs privately, and exports structured methods.
+The indexing and chunk division pipeline has been successfully extracted into a dedicated service, leaving `RepositoryService` strictly as an orchestrator, adhering to the **Single Responsibility Principle**.
 
 ## Files Created
-- **Chunk Embedding Repository** ([apps/api/src/repositories/chunk-embedding.repository.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/repositories/chunk-embedding.repository.ts)):
-  - Defines the data insertion shape interface `CreateChunkEmbeddingInput`.
-  - Implements the `ChunkEmbeddingRepository` class with `create(input)` and a placeholder `deleteByRepository(repositoryId)` method.
-  - Converts high-dimensional vector numeric arrays (`number[]`) into PostgreSQL pgvector formatting (`'[0.1, -0.2, ...]'`) inside the private helper method `formatVector()`.
-  - Performs parameterized SQL inserting using Prisma `$executeRaw` to prevent SQL injection vulnerabilities.
-  - Catches database errors and maps them to structured `AppError` exceptions with Winston logging.
+- **Repository Processing Service** ([apps/api/src/services/repository-processing.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-processing.service.ts)):
+  - Implements the new `RepositoryProcessingService` class.
+  - Takes responsibility for code extraction, sliding window chunking, status database transitions, and Winston logging.
+  - Injects `RepositoryRepository`, `CodeChunkRepository`, `FileExtractionService`, and `ChunkingService` via constructor dependency injection.
+
+## Files Modified
+- **Repository Service** ([apps/api/src/services/repository.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository.service.ts)):
+  - Injects `RepositoryProcessingService` inside the constructor.
+  - Cleared legacy chunking/extraction dependencies.
+  - Refactored `processRepository()` to perform only repository existence and ownership validation before delegating execution.
 
 ---
 
-## Code Structure Layout
+## Architectural Responsibility Delegation
 
 ```mermaid
 graph TD
-    Service["Upper Service Layer (e.g. Ingestion Service)"]
-    Repo["ChunkEmbeddingRepository (repositories/chunk-embedding.repository.ts)"]
-    Prisma["Prisma Client Instance ($executeRaw)"]
-    DB["PostgreSQL + pgvector (ChunkEmbedding Table)"]
+    Client["Express Route Controller / Worker Thread"]
+    RepoService["RepositoryService (services/repository.service.ts)"]
+    ProcessingService["RepositoryProcessingService (services/repository-processing.service.ts)"]
+    DB["PostgreSQL (Prisma Client)"]
+    Extractor["FileExtractionService"]
+    Chunker["ChunkingService"]
 
-    Service -- "create(CreateChunkEmbeddingInput)" --> Repo
-    Repo -- "formatVector(embedding)" --> Repo
-    Repo -- "EXECUTE RAW INSERT" --> Prisma
-    Prisma -- "INSERT INTO public.ChunkEmbedding" --> DB
+    Client -- "processRepository(id, userId)" --> RepoService
+    Note over RepoService: Validation Phase:<br>1. Existence checks<br>2. Ownership validation
+    RepoService -- "processRepository(id)" --> ProcessingService
+    
+    Note over ProcessingService: Execution Phase:<br>1. Status -> PROCESSING<br>2. Delete previous chunks<br>3. Extract & Chunk files<br>4. Bulk save chunks<br>5. Status -> COMPLETED
+    ProcessingService -- "Update Status" --> DB
+    ProcessingService -- "extractFiles()" --> Extractor
+    ProcessingService -- "chunkFile()" --> Chunker
+    ProcessingService -- "createMany()" --> DB
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Confirm Database Tables**:
-   Verify the table structure matches our repository properties using the CLI:
+1. **Start workspace**:
    ```bash
-   docker exec -it codeatlas-postgres psql -U postgres -d codeatlas -c "\d \"ChunkEmbedding\""
+   npm run dev
    ```
 
-2. **Run Tests / Build**:
-   ```bash
-   npm run build
-   ```
+2. **Trigger indexing process**:
+   - Navigate to `http://localhost:3000/dev/sync-user`.
+   * Click **Process Repository** for any imported repository.
+   * Verify that the progress completes smoothly through cloning -> analyzing -> processing -> completed and database records are updated as before.

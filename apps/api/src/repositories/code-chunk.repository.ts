@@ -1,3 +1,4 @@
+import { CodeChunk } from "@prisma/client";
 import { prisma } from "../database";
 
 export interface CreateChunkInput {
@@ -9,6 +10,15 @@ export interface CreateChunkInput {
 }
 
 export class CodeChunkRepository {
+  /**
+   * Creates a single code chunk and returns the created record.
+   */
+  async create(input: CreateChunkInput): Promise<CodeChunk> {
+    return prisma.codeChunk.create({
+      data: input,
+    });
+  }
+
   /**
    * Bulk inserts code chunk records into the PostgreSQL database.
    */
