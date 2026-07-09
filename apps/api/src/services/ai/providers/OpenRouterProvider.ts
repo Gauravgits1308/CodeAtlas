@@ -10,6 +10,8 @@ export class OpenRouterProvider implements AIProvider {
   constructor() {
     const apiKey = config.openrouterApiKey;
     const baseURL = config.openrouterBaseUrl;
+    logger.info(`Provider: ${config.aiProvider}`);
+    logger.info(`Embedding Model: ${config.openrouterEmbeddingModel}`);
 
     if (!baseURL) {
       throw new AppError("OPENROUTER_BASE_URL is not configured.", 500);

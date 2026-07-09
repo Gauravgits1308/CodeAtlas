@@ -1,15 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import { EmbeddingService } from "../services/ai/embedding.service";
-import { OpenRouterProvider } from "../services/ai/providers/OpenRouterProvider";
 import { asyncHandler, AppError } from "../utils/errors";
+import { createAIProvider } from "../services/ai/providers/provider.factory";
 
-const provider = new OpenRouterProvider();
-const embeddingService = new EmbeddingService(provider);
+const embeddingService = new EmbeddingService(createAIProvider());
 
 export class DevController {
   /**
-   * Temporary development-only endpoint to test OpenAI embedding generation.
-   */
+ * Temporary development-only endpoint to test embedding generation.
+ */
   testEmbedding = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { text } = req.body as { text?: string };
 
@@ -21,9 +20,9 @@ export class DevController {
 
     res.status(200).json({
       success: true,
-      message: "TEMPORARY DEVELOPMENT ENDPOINT: Embedding generated successfully.",
+      message: "Embedding generated successfully.",
       dimensions: vector.length,
-      preview: vector.slice(0, 5),
+      preview: vector.slice(0, 10),
     });
   });
 }

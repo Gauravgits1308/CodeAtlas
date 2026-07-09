@@ -20,7 +20,8 @@ export const config = {
   aiProvider: process.env.AI_PROVIDER || "openrouter",
   openrouterApiKey: process.env.OPENROUTER_API_KEY || "",
   openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-  openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "text-embedding-3-small",
+  openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "",
+  openrouterChatModel: process.env.OPENROUTER_CHAT_MODEL || "",
 }
 
 // Warn about missing database connections
