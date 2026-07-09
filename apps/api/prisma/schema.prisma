@@ -85,11 +85,29 @@ model CodeChunk {
   id           String     @id @default(uuid())
   repositoryId String
   repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
   filePath     String
   startLine    Int
   endLine      Int
   content      String
+
+  embedding    ChunkEmbedding?
+
   createdAt    DateTime   @default(now())
 
   @@index([repositoryId])
+}
+
+model ChunkEmbedding {
+  id         String    @id @default(uuid())
+
+  chunkId    String    @unique
+  chunk      CodeChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  provider   String
+  model      String
+  dimensions Int
+
+  createdAt  DateTime  @default(now())
+  updatedAt DateTime @updatedAt
 }
