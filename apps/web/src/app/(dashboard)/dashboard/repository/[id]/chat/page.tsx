@@ -21,7 +21,8 @@ import {
   Code,
   History,
   Trash2,
-  Edit2
+  Edit2,
+  FileText
 } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
@@ -161,8 +162,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Layout Tabs on Mobile viewports: 'chat' | 'explorer' | 'code'
   const [activeTab, setActiveTab] = React.useState<"chat" | "explorer" | "code">("chat")
 
-  // Toggle center panel views: 'code' | 'health'
-  const [centerView, setCenterView] = React.useState<"code" | "health">("code")
+  // Toggle center panel views: 'code' | 'health' | 'docs'
+  const [centerView, setCenterView] = React.useState<"code" | "health" | "docs">("code")
 
   const [repoDetails, setRepoDetails] = React.useState<RepositoryDetails | null>(null)
   const [messages, setMessages] = React.useState<Message[]>([])
@@ -208,6 +209,51 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [isLoadingFile, setIsLoadingFile] = React.useState(false)
   const [highlightedLines, setHighlightedLines] = React.useState<{ start: number; end: number } | null>(null)
   const [copiedCode, setCopiedCode] = React.useState(false)
+
+  // AI Documentation Generator States
+  const [docType, setDocType] = React.useState<"README" | "API_DOCS" | "FOLDER_STRUCTURE" | "SETUP_GUIDE">("README")
+  const [docTone, setDocTone] = React.useState<"PROFESSIONAL" | "BEGINNER" | "ENTERPRISE">("PROFESSIONAL")
+  const [docContent, setDocContent] = React.useState("")
+  const [isGeneratingDocs, setIsGeneratingDocs] = React.useState(false)
+  const [docSubView, setDocSubView] = React.useState<"preview" | "edit">("preview")
+
+  const handleGenerateDocs = async () => {
+    setIsGeneratingDocs(true)
+    try {
+      const res = await api.post<{ success: boolean; content: string }>(`/repositories/${repositoryId}/docs`, {
+        type: docType,
+        tone: docTone
+      })
+      if (res.success) {
+        setDocContent(res.content)
+        setDocSubView("preview")
+        toast.success("AI Documentation generated successfully.")
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to generate documentation.")
+    } finally {
+      setIsGeneratingDocs(false)
+    }
+  }
+
+  const handleCopyDocs = () => {
+    navigator.clipboard.writeText(docContent)
+    toast.success("Documentation copied to clipboard.")
+  }
+
+  const handleDownloadDocs = () => {
+    const blob = new Blob([docContent], { type: "text/markdown" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${docType.toLowerCase()}_documentation.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success("Markdown documentation downloaded successfully.")
+  }
 
   const chatEndRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -904,6 +950,18 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             >
               📊 Repository Health
             </button>
+            <button
+              onClick={() => {
+                setCenterView("docs")
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                centerView === "docs"
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+              }`}
+            >
+              📝 AI Docs
+            </button>
           </div>
           
           {centerView === "health" && healthReport && (
@@ -935,7 +993,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         </div>
 
         {/* Center Panel Content area switch */}
-        {centerView === "health" ? (
+        {centerView === "health" && (
           /* Health Dashboard report metrics view */
           <div id="printable-health-report" className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin select-text bg-[#080B12]">
             {isLoadingHealth ? (
@@ -1088,8 +1146,152 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               </div>
             )}
           </div>
-        ) : (
-          /* Code Viewer layout */
+        )}
+
+        {/* AI Documentation Panel Content area */}
+        {centerView === "docs" && (
+          <div className="flex-1 flex min-h-0 divide-x divide-border/10 bg-[#080B12]">
+            {/* Options Pane (Left) */}
+            <div className="w-64 p-4 shrink-0 bg-[#0B0F1A]/80 flex flex-col justify-between font-mono select-none">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+                    Document Type
+                  </label>
+                  <div className="space-y-1.5">
+                    {[
+                      { id: "README", label: "📄 README" },
+                      { id: "API_DOCS", label: "⚙️ API Docs" },
+                      { id: "FOLDER_STRUCTURE", label: "📁 Folder Docs" },
+                      { id: "SETUP_GUIDE", label: "⚙️ Setup Guide" }
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setDocType(t.id as "README" | "API_DOCS" | "FOLDER_STRUCTURE" | "SETUP_GUIDE")}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition-all cursor-pointer border ${
+                          docType === t.id
+                            ? "bg-primary/10 text-primary border-primary/20 font-bold"
+                            : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+                    Writing Tone
+                  </label>
+                  <select
+                    value={docTone}
+                    onChange={(e) => setDocTone(e.target.value as "PROFESSIONAL" | "BEGINNER" | "ENTERPRISE")}
+                    className="w-full bg-[#111622] border border-border/15 text-foreground text-xs rounded-lg p-2 font-mono focus:outline-none focus:border-primary/55 cursor-pointer"
+                  >
+                    <option value="PROFESSIONAL">Professional</option>
+                    <option value="BEGINNER">Beginner</option>
+                    <option value="ENTERPRISE">Enterprise</option>
+                  </select>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleGenerateDocs}
+                disabled={isGeneratingDocs}
+                className="w-full bg-primary hover:bg-primary/95 text-white font-mono text-xs font-bold py-2 rounded-xl shrink-0 cursor-pointer"
+              >
+                {isGeneratingDocs ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin mr-2" />
+                    Generating...
+                  </>
+                ) : docContent ? (
+                  "Regenerate"
+                ) : (
+                  "Generate"
+                )}
+              </Button>
+            </div>
+
+            {/* Document Preview & Editor (Right) */}
+            <div className="flex-1 flex flex-col min-h-0 bg-[#0D111F]">
+              {isGeneratingDocs ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground/60 font-mono text-xs select-none">
+                  <Loader2 className="size-8 text-primary animate-spin" />
+                  <span>Analyzing codebase files & generating docs...</span>
+                </div>
+              ) : !docContent ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-3 text-muted-foreground/40 font-mono">
+                  <FileText className="size-12 text-muted-foreground/15" />
+                  <div className="text-xs font-bold text-foreground/40">Documentation Workspace</div>
+                  <div className="text-[10px] max-w-xs leading-relaxed">
+                    Select a document template and writing tone, then click Generate to automatically build professional docs.
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Tabs Header */}
+                  <div className="px-4 py-2 border-b border-border/10 bg-[#0A0D15]/40 flex items-center justify-between shrink-0 font-mono text-xs select-none">
+                    <div className="flex gap-2">
+                      {[
+                        { id: "preview", label: "👀 Preview" },
+                        { id: "edit", label: "✏️ Edit" }
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setDocSubView(tab.id as "preview" | "edit")}
+                          className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer border ${
+                            docSubView === tab.id
+                              ? "bg-primary/10 text-primary border-primary/20"
+                              : "text-muted-foreground border-transparent hover:text-foreground"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleCopyDocs}
+                        variant="outline"
+                        className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 text-foreground cursor-pointer"
+                      >
+                        📋 Copy
+                      </Button>
+                      <Button
+                        onClick={handleDownloadDocs}
+                        variant="outline"
+                        className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 text-foreground cursor-pointer"
+                      >
+                        📥 Download
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Body Content */}
+                  <div className="flex-1 overflow-y-auto p-6 scrollbar-thin select-text">
+                    {docSubView === "edit" ? (
+                      <textarea
+                        value={docContent}
+                        onChange={(e) => setDocContent(e.target.value)}
+                        className="w-full h-full bg-transparent border-none text-foreground font-mono text-xs focus:outline-none resize-none leading-relaxed"
+                      />
+                    ) : (
+                      <div className="prose prose-invert max-w-none">
+                        <Markdown content={docContent} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Code Viewer Panel Content area */}
+        {centerView === "code" && (
           <div className="flex-1 flex flex-row min-h-0 overflow-hidden relative">
             {selectedFilePath ? (
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">

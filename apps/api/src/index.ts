@@ -19,6 +19,7 @@ import chatRouter from "./routes/chat.routes";
 import conversationRouter from "./routes/conversation.routes";
 import explainRouter from "./routes/explain.routes";
 import explainSelectionRouter from "./routes/explain-selection.routes";
+import documentationRouter from "./routes/documentation.routes";
 import "./workers/repository.worker";
 
 const app = express();
@@ -48,6 +49,8 @@ app.use("/api/v1/conversations", conversationRouter);
 app.use("/api/v1/explain-selection", explainSelectionRouter);
 app.use("/api/explain-selection", explainSelectionRouter);
 app.use("/api/v1/explain-selection-legacy", explainRouter);
+app.use("/api/v1/repositories/:id/docs", documentationRouter);
+app.use("/api/repositories/:id/docs", documentationRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {
