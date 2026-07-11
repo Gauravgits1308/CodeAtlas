@@ -29,4 +29,28 @@ export class EmbeddingService {
       throw new AppError(`Failed to generate embedding: ${err.message}`, 500);
     }
   }
+
+  /**
+   * Generates embeddings for multiple input texts in a batch.
+   *
+   * @param texts An array of input text strings to embed.
+   * @returns A promise that resolves to an array of embedding vectors.
+   */
+  async generateEmbeddings(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    logger.info(`Batch embedding request started for ${texts.length} inputs`);
+
+    try {
+      const embeddings = await this.provider.generateEmbeddings(texts);
+      logger.info("Batch embedding generated successfully");
+      return embeddings;
+    } catch (error: unknown) {
+      const err = error as Error;
+      logger.error(`Batch embedding generation failed: ${err.message}`, err);
+      throw new AppError(`Failed to generate batch embeddings: ${err.message}`, 500);
+    }
+  }
 }

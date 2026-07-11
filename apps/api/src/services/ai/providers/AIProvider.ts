@@ -6,4 +6,12 @@ export interface AIProvider {
    * @returns A promise that resolves to the embedding vector.
    */
   generateEmbedding(text: string): Promise<number[]>;
+
+  /**
+   * Generates numeric embedding vectors for multiple input texts in a batch.
+   *
+   * @param texts An array of input text strings to embed.
+   * @returns A promise that resolves to an array of embedding vectors.
+   */
+  generateEmbeddings(texts: string[]): Promise<number[][]>;
 }

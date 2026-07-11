@@ -15,6 +15,7 @@ enum RepositoryStatus {
   INDEXING
   PROCESSING
   COMPLETED
+  PARTIALLY_INDEXED
   FAILED
 }
 
@@ -29,32 +30,34 @@ model User {
 }
 
 model Repository {
-  id            String           @id @default(uuid())
-  githubRepoId  String           // GitHub internal ID
-  name          String
-  fullName      String           // e.g. "owner/repo-name"
-  owner         String
-  visibility    String           // "public" | "private"
-  defaultBranch String
-  cloneUrl      String
-  htmlUrl       String
-  description   String?
-  primaryLanguage String?
-  stars         Int              @default(0)
-  forks         Int              @default(0)
-  watchers      Int              @default(0)
-  status        RepositoryStatus @default(PENDING)
-  lastSyncedAt  DateTime?
-  userId        String
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  metrics       CodeMetric?
-  syncLogs      SyncLog[]
-  chunks        CodeChunk[]
-  conversations Conversation[]
+  id               String                      @id @default(uuid())
+  githubRepoId     String
+  name             String
+  fullName         String
+  owner            String
+  visibility       String
+  defaultBranch    String                      @default("main")
+  cloneUrl         String
+  htmlUrl          String
+  description      String?
+  primaryLanguage  String?
+  stars            Int                         @default(0)
+  forks            Int                         @default(0)
+  watchers         Int                         @default(0)
+  status           RepositoryStatus            @default(PENDING)
+  lastSyncedAt     DateTime?
+  userId           String
+  user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metrics          CodeMetric?
+  syncLogs         SyncLog[]
+  chunks           CodeChunk[]
+  conversations    Conversation[]
   processingStatus RepositoryProcessingStatus?
-  isArchived    Boolean          @default(false)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  isArchived       Boolean                     @default(false)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  chunksCount      Int                         @default(0)
+  embeddingsCount  Int                         @default(0)
 
   @@unique([owner, name, userId])
 }
@@ -162,5 +165,9 @@ model RepositoryProcessingStatus {
   processedChunks      Int        @default(0)
   totalChunks          Int        @default(0)
   embeddingsGenerated  Int        @default(0)
+  duration             Int        @default(0)
+  lastHeartbeat        DateTime   @default(now())
+  completedStages      Json?      // E.g. ["CLONING", "EXTRACTING"]
+  failedStage          String?
   logs                 Json?      // To store the logs array: [{ timestamp: string, message: string, stage: string }]
 }
