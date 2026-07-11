@@ -37,4 +37,13 @@ router.get("/:id/file", requireAuth, repositoryController.getRepositoryFileConte
 // GET /api/v1/repositories/:id/health
 router.get("/:id/health", requireAuth, healthController.getHealthReport);
 
+// DELETE /api/v1/repositories/:id
+router.delete("/:id", requireAuth, repositoryController.deleteRepository);
+
+// PATCH /api/v1/repositories/:id/archive
+router.patch("/:id/archive", requireAuth, repositoryController.archiveRepository);
+
+// PATCH /api/v1/repositories/:id/restore
+router.patch("/:id/restore", requireAuth, repositoryController.restoreRepository);
+
 export default router;

@@ -51,6 +51,8 @@ model Repository {
   syncLogs      SyncLog[]
   chunks        CodeChunk[]
   conversations Conversation[]
+  processingStatus RepositoryProcessingStatus?
+  isArchived    Boolean          @default(false)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -141,4 +143,24 @@ model Message {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])
+}
+
+model RepositoryProcessingStatus {
+  id                   String     @id @default(uuid())
+  repositoryId         String     @unique
+  repository           Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  currentStage         String     @default("QUEUED")
+  stageProgress        Float      @default(0.0)
+  startedAt            DateTime?  @default(now())
+  finishedAt           DateTime?
+  lastUpdated          DateTime   @updatedAt
+  currentMessage       String?
+  errorMessage         String?
+  estimatedRemainingTime String?
+  processedFiles       Int        @default(0)
+  totalFiles           Int        @default(0)
+  processedChunks      Int        @default(0)
+  totalChunks          Int        @default(0)
+  embeddingsGenerated  Int        @default(0)
+  logs                 Json?      // To store the logs array: [{ timestamp: string, message: string, stage: string }]
 }

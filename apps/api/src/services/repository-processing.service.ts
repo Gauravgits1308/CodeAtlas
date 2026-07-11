@@ -67,7 +67,7 @@ export class RepositoryProcessingService {
       throw new AppError("Repository not found.", 404);
     }
 
-    if (repo.status !== "COMPLETED" && repo.status !== "FAILED") {
+    if (repo.status !== "COMPLETED" && repo.status !== "FAILED" && repo.status !== "PROCESSING" && repo.status !== "QUEUED") {
       throw new AppError(
         "Repository codebase must be cloned successfully before triggering indexing.",
         400
@@ -77,6 +77,13 @@ export class RepositoryProcessingService {
     logger.info(
       `Repository processing started for repository: ${repositoryId}`
     );
+
+    const { progressService } = await import("./progress.service");
+    await progressService.updateProgress(repo.id, {
+      currentStage: "Extracting Files",
+      stageProgress: 30.0,
+      currentMessage: "Extracting supported source files from local repository clone...",
+    });
 
     await this.repositoryRepository.updateStatus(repo.id, "PROCESSING");
 
@@ -93,36 +100,66 @@ export class RepositoryProcessingService {
        */
       const files = this.fileExtractionService.extractFiles(repo.id);
 
+      await progressService.updateProgress(repo.id, {
+        currentStage: "Processing Files",
+        stageProgress: 40.0,
+        currentMessage: `Discovered ${files.length} source code files. Parsing structures...`,
+        totalFiles: files.length,
+      });
+
       logger.info(
         `Extracted ${files.length} supported source files for repository ${repositoryId}`
       );
 
-      let totalChunksCount = 0;
+      // Pre-chunk all files to get accurate counts
+      await progressService.updateProgress(repo.id, {
+        currentStage: "Chunking Code",
+        stageProgress: 50.0,
+        currentMessage: "Chunking source code files into semantic segments...",
+        totalFiles: files.length,
+      });
 
-      /**
-       * Process every file.
-       */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fileChunksMap: Array<{ file: typeof files[0]; chunks: any[] }> = [];
+      let estimatedTotalChunks = 0;
+
       for (const file of files) {
         const chunks = this.chunkingService.chunkFile(
           repo.id,
           file.filePath,
           file.content
         );
+        fileChunksMap.push({ file, chunks });
+        estimatedTotalChunks += chunks.length;
+      }
 
-        logger.debug(
-          `Generated ${chunks.length} chunks from ${file.filePath}`
-        );
+      await progressService.updateProgress(repo.id, {
+        currentStage: "Chunking Code",
+        stageProgress: 55.0,
+        currentMessage: `Chunking completed. Formulated ${estimatedTotalChunks} code chunks.`,
+        totalFiles: files.length,
+        totalChunks: estimatedTotalChunks,
+      });
 
-        /**
-         * Process every chunk.
-         */
-        for (const chunkInput of chunks) {
+      let processedFiles = 0;
+      let processedChunks = 0;
+      let embeddingsGenerated = 0;
+
+      /**
+       * Process every chunk map and generate embeddings.
+       */
+      for (const item of fileChunksMap) {
+        processedFiles++;
+        
+        for (const chunkInput of item.chunks) {
           // Persist chunk
           const createdChunk =
             await this.codeChunkRepository.create({
               ...chunkInput,
-              classification: file.classification,
+              classification: item.file.classification,
             });
+
+          processedChunks++;
 
           logger.debug(
             `Generating embedding for chunk ${createdChunk.id}`
@@ -143,11 +180,24 @@ export class RepositoryProcessingService {
             embedding,
           });
 
+          embeddingsGenerated++;
+
           logger.debug(
             `Embedding stored successfully for chunk ${createdChunk.id}`
           );
 
-          totalChunksCount++;
+          // Dynamic percentage from 60% to 80%
+          const scaleOffset = estimatedTotalChunks > 0 ? (embeddingsGenerated / estimatedTotalChunks) * 20.0 : 20.0;
+          await progressService.updateProgress(repo.id, {
+            currentStage: "Generating Embeddings",
+            stageProgress: 60.0 + Math.round(scaleOffset),
+            currentMessage: `Generating pgvector embeddings (${embeddingsGenerated} / ${estimatedTotalChunks})...`,
+            processedFiles,
+            totalFiles: files.length,
+            processedChunks,
+            totalChunks: estimatedTotalChunks,
+            embeddingsGenerated,
+          });
         }
       }
 
@@ -157,11 +207,11 @@ export class RepositoryProcessingService {
       );
 
       logger.info(
-        `Repository processing completed successfully for repository ${repositoryId}. Total chunks processed: ${totalChunksCount}`
+        `Repository processing completed successfully for repository ${repositoryId}. Total chunks processed: ${embeddingsGenerated}`
       );
 
       return {
-        chunksCount: totalChunksCount,
+        chunksCount: embeddingsGenerated,
       };
     } catch (error) {
       logger.error(

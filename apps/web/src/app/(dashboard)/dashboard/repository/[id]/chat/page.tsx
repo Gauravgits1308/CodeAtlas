@@ -2,11 +2,13 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { 
   Send, 
   Loader2, 
   MessageSquare, 
   CheckCircle, 
+  XCircle,
   FileCode, 
   HelpCircle, 
   Folder, 
@@ -197,6 +199,11 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Health Dashboard State
   const [healthReport, setHealthReport] = React.useState<HealthReport | null>(null)
   const [isLoadingHealth, setIsLoadingHealth] = React.useState(false)
+
+  // Real-time Sync Progress overlay state
+  const [showSyncProgress, setShowSyncProgress] = React.useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [syncProgress, setSyncProgress] = React.useState<any>(null)
 
   // Explorer State
   const [filesTree, setFilesTree] = React.useState<FileTreeNode[]>([])
@@ -488,12 +495,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             return
           }
 
-          if (match.status !== "COMPLETED") {
-            toast.error("Repository is not fully indexed yet. Please trigger sync.")
-            router.push("/dashboard")
-            return
-          }
-
           setRepoDetails({
             id: match.id,
             name: match.name,
@@ -501,7 +502,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             url: match.htmlUrl || match.cloneUrl,
             provider: "github",
             isPrivate: match.visibility === "private",
-            status: match.status,
+            status: match.status as RepositoryDetails["status"],
             lastSyncedAt: match.lastSyncedAt,
             createdAt: match.createdAt,
             primaryLanguage: match.primaryLanguage,
@@ -514,6 +515,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             classifications: match.classifications,
             metrics: match.metrics || undefined,
           })
+
+          if (match.status !== "COMPLETED") {
+            setShowSyncProgress(true)
+            setIsLoadingRepo(false)
+            return
+          }
         }
 
         // Fetch file tree list
@@ -533,6 +540,67 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
     fetchRepoData()
   }, [repositoryId, router, fetchConversations])
+
+  // Hook for SSE connectSSE progress checking
+  React.useEffect(() => {
+    if (!showSyncProgress) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSyncProgress(null)
+      return
+    }
+
+    let eventSource: EventSource | null = null;
+    let isMounted = true;
+
+    async function connectSSE() {
+      const token = typeof window !== "undefined" && (window as unknown as { Clerk?: { session?: { getToken: () => Promise<string> } } }).Clerk?.session
+        ? await (window as unknown as { Clerk: { session: { getToken: () => Promise<string> } } }).Clerk.session.getToken()
+        : "";
+
+      const queryParam = token ? `?token=${encodeURIComponent(token)}` : "";
+      
+      if (!isMounted) return;
+
+      eventSource = new EventSource(
+        `/api/v1/repositories/${repositoryId}/progress/stream${queryParam}`
+      );
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (!isMounted) return;
+          
+          setSyncProgress(data);
+
+          if (data.status === "COMPLETED") {
+            toast.success("Repository sync completed! Loading AI Workspace...");
+            setShowSyncProgress(false);
+            
+            api.get<{ success: boolean; files: FileTreeNode[] }>(`/v1/repositories/${repositoryId}/files`)
+              .then((res) => {
+                if (res.success && isMounted) setFilesTree(res.files);
+              });
+            fetchConversations();
+          }
+        } catch (err) {
+          console.error("Failed to parse SSE payload in chat:", err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.warn("SSE connection closed or lost: ", err);
+      };
+    }
+
+    connectSSE();
+
+    return () => {
+      isMounted = false;
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [showSyncProgress, repositoryId, fetchConversations])
 
   // Inject print styles dynamically to exclude page templates on printing
   React.useEffect(() => {
@@ -1049,9 +1117,176 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   if (isLoadingRepo) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 py-32 gap-3.5 bg-[#0B0F19]">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#070913] text-muted-foreground gap-3 font-mono text-xs">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-muted-foreground font-mono">Loading repository workspace configuration...</p>
+        <span>Loading AI Workspace...</span>
+      </div>
+    )
+  }
+
+  if (showSyncProgress) {
+    const PIPELINE_STAGES = [
+      "QUEUED",
+      "Cloning Repository",
+      "Extracting Files",
+      "Processing Files",
+      "Chunking Code",
+      "Generating Embeddings",
+      "Calculating Repository Metrics",
+      "AI Health Analysis",
+      "Repository Ready"
+    ];
+
+    const currentStageIndex = syncProgress 
+      ? PIPELINE_STAGES.indexOf(syncProgress.currentStage)
+      : PIPELINE_STAGES.indexOf(
+          repoDetails?.status === "PENDING" ? "QUEUED" :
+          repoDetails?.status === "CLONING" ? "Cloning Repository" :
+          repoDetails?.status === "ANALYZING" ? "Calculating Repository Metrics" :
+          repoDetails?.status === "PROCESSING" || repoDetails?.status === "INDEXING" ? "Generating Embeddings" :
+          repoDetails?.status === "COMPLETED" ? "Repository Ready" : "QUEUED"
+        );
+
+    return (
+      <div className="h-screen w-screen bg-[#070913] text-muted-foreground flex items-center justify-center p-6 select-none overflow-y-auto font-mono text-xs">
+        <div className="bg-[#0D111A] border border-border/20 rounded-2xl max-w-2xl w-full p-8 space-y-6 font-mono text-left shadow-2xl">
+          <div className="flex justify-between items-center pb-4 border-b border-border/10">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">
+                🔄 Processing Codebase
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                {repoDetails?.owner} / {repoDetails?.name}
+              </p>
+            </div>
+            <Link 
+              href="/dashboard"
+              className="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-border/30 text-xs font-semibold hover:bg-muted/40 transition-colors"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
+
+          {/* Progress Bar overall */}
+          {syncProgress && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                <span>Pipeline execution progress</span>
+                <span className="font-bold text-foreground">{Math.round(syncProgress.progress)}%</span>
+              </div>
+              <div className="w-full bg-muted/20 h-2.5 rounded-full overflow-hidden flex">
+                <div 
+                  className={`h-full transition-all duration-300 ${syncProgress.status === "FAILED" ? "bg-rose-500" : "bg-primary"}`}
+                  style={{ width: `${syncProgress.progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Pipeline stages list timeline */}
+          <div className="space-y-3">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block mb-2">
+              Pipeline Timeline
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { label: "Queued", key: "QUEUED" },
+                { label: "Repository Cloned", key: "Cloning Repository" },
+                { label: "Files Extracted", key: "Extracting Files", detailKey: "totalFiles" },
+                { label: "Code Chunked", key: "Chunking Code", detailKey: "totalChunks" },
+                { label: "Generating Embeddings", key: "Generating Embeddings", detailKey: "embeddingsGenerated" },
+                { label: "Calculated Metrics", key: "Calculating Repository Metrics" },
+                { label: "AI Health Report", key: "AI Health Analysis" },
+                { label: "Repository Ready", key: "Repository Ready" }
+              ].map((stage) => {
+                const stageIndex = PIPELINE_STAGES.indexOf(stage.key);
+                let statusIcon = "⬜";
+                let textClass = "text-muted-foreground/60";
+
+                if (currentStageIndex > stageIndex) {
+                  statusIcon = "✔";
+                  textClass = "text-emerald-400 font-semibold";
+                } else if (currentStageIndex === stageIndex) {
+                  if (syncProgress?.status === "FAILED") {
+                    statusIcon = "❌";
+                    textClass = "text-rose-400 font-bold";
+                  } else {
+                    statusIcon = "⏳";
+                    textClass = "text-amber-400 font-bold animate-pulse";
+                  }
+                }
+
+                let countDetail = "";
+                if (syncProgress && stage.detailKey) {
+                  if (stage.key === "Generating Embeddings" && syncProgress.embeddingsGenerated > 0) {
+                    countDetail = ` (${syncProgress.embeddingsGenerated} / ${syncProgress.totalChunks || 0})`;
+                  } else if (syncProgress[stage.detailKey] > 0) {
+                    countDetail = ` (${syncProgress[stage.detailKey]})`;
+                  }
+                }
+
+                return (
+                  <div key={stage.key} className={`flex items-center gap-2.5 p-2.5 rounded-lg bg-[#0F1422]/50 border border-border/5 ${textClass}`}>
+                    <span className="text-sm shrink-0">{statusIcon}</span>
+                    <span>{stage.label}{countDetail}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Failure screen if pipeline broke */}
+          {syncProgress?.status === "FAILED" && (
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4.5 space-y-3">
+              <div className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+                <XCircle className="size-4" />
+                <span>Sync Pipeline Failed during stage: &quot;{syncProgress.currentStage}&quot;</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {syncProgress.errorMessage || "Unknown process error occurred."}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await api.post(`/v1/repositories/${repositoryId}/process`);
+                    toast.success("Repository queued for processing.");
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setSyncProgress((prev: any) => prev ? { ...prev, status: "PROCESSING" } : null);
+                  } catch (err: unknown) {
+                    const error = err as Error;
+                    toast.error(error.message || "Failed to trigger sync retry.");
+                  }
+                }}
+                className="border-rose-500/30 text-rose-400 bg-rose-500/5 hover:bg-rose-500/10 font-bold text-xs h-8 cursor-pointer rounded-lg"
+              >
+                Retry Processing
+              </Button>
+            </div>
+          )}
+
+          {/* Live logs terminal viewer */}
+          {syncProgress && syncProgress.logs && syncProgress.logs.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Terminal className="size-3.5" />
+                <span>Execution Logs</span>
+              </div>
+              <div className="bg-black/90 p-4 rounded-lg text-[10px] text-zinc-300 max-h-48 overflow-y-auto mt-2 leading-relaxed border border-border/10 select-text scrollbar-thin">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {syncProgress.logs.map((log: any, logIdx: number) => (
+                  <div key={logIdx} className="hover:bg-white/5 py-0.5">
+                    <span className="text-muted-foreground/60 mr-2">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                    <span className="text-primary mr-1.5">[{log.stage}]</span>
+                    <span className="text-zinc-200">{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     )
   }

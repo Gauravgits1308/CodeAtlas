@@ -25,6 +25,13 @@ export class RepositoryJobService {
 
     // Set repository status to QUEUED in PostgreSQL
     await this.repositoryRepository.updateStatus(repositoryId, "QUEUED");
+    const { progressService } = await import("./progress.service");
+    await progressService.updateProgress(repositoryId, {
+      currentStage: "QUEUED",
+      stageProgress: 0.0,
+      currentMessage: "Repository waiting in processing queue...",
+      finishedAt: null,
+    });
 
     // Enqueue job using repositoryId as deduplication key
     const job = await repositoryQueue.add(

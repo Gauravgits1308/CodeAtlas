@@ -11,6 +11,9 @@ const userRepository = new UserRepository();
  * and automatically synchronizing Clerk user profiles to the local database.
  */
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.headers.authorization && req.query.token && typeof req.query.token === "string") {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
   const auth = getAuth(req);
 
   if (!auth.userId) {

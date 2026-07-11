@@ -21,6 +21,7 @@ import explainRouter from "./routes/explain.routes";
 import explainSelectionRouter from "./routes/explain-selection.routes";
 import documentationRouter from "./routes/documentation.routes";
 import diagramRouter from "./routes/diagram.routes";
+import progressRouter from "./routes/progress.routes";
 import "./workers/repository.worker";
 
 const app = express();
@@ -54,6 +55,8 @@ app.use("/api/v1/repositories/:id/docs", documentationRouter);
 app.use("/api/repositories/:id/docs", documentationRouter);
 app.use("/api/v1/repositories/:id/diagrams", diagramRouter);
 app.use("/api/repositories/:id/diagrams", diagramRouter);
+app.use("/api/v1/repositories/:id/progress", progressRouter);
+app.use("/api/repositories/:id/progress", progressRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {

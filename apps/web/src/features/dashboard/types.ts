@@ -6,6 +6,7 @@ export interface Repository {
   provider: "github" | "gitlab" | "bitbucket"
   isPrivate: boolean
   status: "PENDING" | "QUEUED" | "CLONING" | "ANALYZING" | "INDEXING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  isArchived?: boolean
   lastSyncedAt?: string
   createdAt: string
   primaryLanguage?: string | null

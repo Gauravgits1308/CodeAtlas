@@ -6,6 +6,7 @@ import { RepositoryService, ImportRepositoryPayload } from "../services/reposito
 import { RepositoryJobService } from "../services/repository-job.service";
 import { asyncHandler, AppError } from "../utils/errors";
 import { prisma } from "../database";
+import { logger } from "../utils/logger";
 
 export class RepositoryController {
   private repositoryJobService: RepositoryJobService;
@@ -125,6 +126,7 @@ export class RepositoryController {
           chunksCount: repo._count?.chunks || 0,
           embeddingsCount: embeddingCount,
           classifications,
+          isArchived: repo.isArchived,
         };
       })
     );
@@ -280,6 +282,123 @@ export class RepositoryController {
     res.status(200).json({
       success: true,
       content,
+    });
+  });
+
+  deleteRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id: repositoryId } = req.params;
+
+    if (!repositoryId || typeof repositoryId !== "string" || !repositoryId.trim()) {
+      throw new AppError("Repository ID is required.", 400);
+    }
+
+    const repository = await prisma.repository.findFirst({
+      where: { id: repositoryId, userId },
+    });
+
+    if (!repository) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    // Worker Safety: Prevent deletion if currently processing
+    const processingStates = ["QUEUED", "CLONING", "ANALYZING", "PROCESSING"];
+    if (processingStates.includes(repository.status)) {
+      throw new AppError("Repository is currently processing. Wait until processing finishes.", 400);
+    }
+
+    const startTime = Date.now();
+    logger.info(`Deletion Started for repository: ${repositoryId} (${repository.fullName})`);
+
+    try {
+      // 1. Delete Messages & Conversations
+      const conversations = await prisma.conversation.findMany({ where: { repositoryId } });
+      const conversationIds = conversations.map(c => c.id);
+      const deletedMessages = await prisma.message.deleteMany({ where: { conversationId: { in: conversationIds } } });
+      const deletedConversations = await prisma.conversation.deleteMany({ where: { repositoryId } });
+
+      // 2. Delete Health Reports / cache files
+      const apiStoragePath = path.join(process.cwd(), "storage", "repositories", repositoryId);
+      if (fs.existsSync(apiStoragePath)) {
+        fs.rmSync(apiStoragePath, { recursive: true, force: true });
+      }
+
+      // 3. Delete Metrics
+      await prisma.codeMetric.deleteMany({ where: { repositoryId } });
+
+      // 4. Delete Embeddings & Chunks
+      const chunks = await prisma.codeChunk.findMany({ where: { repositoryId } });
+      const chunkIds = chunks.map(c => c.id);
+      const deletedEmbeddings = await prisma.chunkEmbedding.deleteMany({ where: { chunkId: { in: chunkIds } } });
+      const deletedChunks = await prisma.codeChunk.deleteMany({ where: { repositoryId } });
+
+      // 5. Delete Local Repository Folder
+      const gitStoragePath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+      if (fs.existsSync(gitStoragePath)) {
+        fs.rmSync(gitStoragePath, { recursive: true, force: true });
+      }
+
+      // 6. Delete Processing Status & Repository Record
+      await prisma.repositoryProcessingStatus.deleteMany({ where: { repositoryId } });
+      await prisma.repository.delete({ where: { id: repositoryId } });
+
+      const cleanupTime = Date.now() - startTime;
+      logger.info(`Deletion Completed for repository: ${repositoryId}. Cleanup Time: ${cleanupTime}ms. Deleted Chunks: ${deletedChunks.count}, Deleted Embeddings: ${deletedEmbeddings.count}, Deleted Messages: ${deletedMessages.count}, Deleted Conversations: ${deletedConversations.count}`);
+
+      res.status(200).json({
+        success: true,
+        message: "Repository removed successfully.",
+      });
+    } catch (err: unknown) {
+      const error = err as Error;
+      logger.error(`Deletion Failed for repository: ${repositoryId}. Error: ${error.message}`, error);
+      throw new AppError(`Unable to remove repository: ${error.message}`, 500);
+    }
+  });
+
+  archiveRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id: repositoryId } = req.params;
+
+    const repository = await prisma.repository.findFirst({
+      where: { id: repositoryId, userId },
+    });
+
+    if (!repository) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    await prisma.repository.update({
+      where: { id: repositoryId },
+      data: { isArchived: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Repository archived successfully.",
+    });
+  });
+
+  restoreRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id: repositoryId } = req.params;
+
+    const repository = await prisma.repository.findFirst({
+      where: { id: repositoryId, userId },
+    });
+
+    if (!repository) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    await prisma.repository.update({
+      where: { id: repositoryId },
+      data: { isArchived: false },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Repository restored successfully.",
     });
   });
 }
