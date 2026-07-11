@@ -1,6 +1,7 @@
 import { RepositoryRepository, CreateRepositoryInput } from "../repositories/repository.repository";
 import { Repository } from "@prisma/client";
 import { AppError } from "../utils/errors";
+import { logger } from "../utils/logger";
 import * as fs from "fs";
 import * as path from "path";
 import { CloneService } from "./clone.service";
@@ -90,6 +91,7 @@ export class RepositoryService {
       };
 
       const upserted = await this.repositoryRepository.upsert(input);
+      logger.info(`[Repository: ${upserted.id}] Repository created in database`);
       importedRepos.push(upserted);
     }
 

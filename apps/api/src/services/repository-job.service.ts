@@ -33,6 +33,17 @@ export class RepositoryJobService {
       finishedAt: null,
     });
 
+    // Remove existing job with the same ID if it exists to allow re-runs/syncs
+    const existingJob = await repositoryQueue.getJob(repositoryId);
+    if (existingJob) {
+      logger.info(`[Repository: ${repositoryId}] Found existing job in queue. Removing it to allow fresh execution.`);
+      try {
+        await existingJob.remove();
+      } catch (removeErr) {
+        logger.warn(`[Repository: ${repositoryId}] Failed to remove existing job: ${removeErr}`);
+      }
+    }
+ 
     // Enqueue job using repositoryId as deduplication key
     logger.info(`[Repository: ${repositoryId}] Job created: Enqueuing job with data: { repositoryId, userId }`);
     const job = await repositoryQueue.add(

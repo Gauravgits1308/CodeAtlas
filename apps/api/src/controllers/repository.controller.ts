@@ -27,6 +27,16 @@ export class RepositoryController {
     }
 
     const imported = await this.repositoryService.importRepositories(userId, repositories);
+ 
+    // Enqueue jobs for all newly imported repositories so they transition to QUEUED and process immediately
+    for (const repo of imported) {
+      try {
+        logger.info(`[RepositoryController] Triggering auto-enqueue for newly imported repository: ${repo.id}`);
+        await this.repositoryJobService.enqueueRepository(repo.id, userId);
+      } catch (enqueueErr) {
+        logger.error(`[RepositoryController] Failed to auto-enqueue repository ${repo.id} during import:`, enqueueErr);
+      }
+    }
 
     res.status(201).json({
       success: true,

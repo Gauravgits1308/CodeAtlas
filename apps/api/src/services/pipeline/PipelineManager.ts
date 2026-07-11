@@ -133,6 +133,12 @@ export class PipelineManager {
           currentMessage: displayMessage,
         });
  
+        if (task.name === "CLONING") logger.info(`[Repository: ${this.repositoryId}] Cloning started`);
+        else if (task.name === "EXTRACTING") logger.info(`[Repository: ${this.repositoryId}] Extraction started`);
+        else if (task.name === "CHUNKING") logger.info(`[Repository: ${this.repositoryId}] Chunking started`);
+        else if (task.name === "GENERATING_EMBEDDINGS") logger.info(`[Repository: ${this.repositoryId}] Embedding generation started`);
+        else if (task.name === "CALCULATING_METRICS") logger.info(`[Repository: ${this.repositoryId}] Metrics calculation started`);
+        else if (task.name === "AI_HEALTH_ANALYSIS") logger.info(`[Repository: ${this.repositoryId}] AI Health analysis started`);
         logger.info(`[PipelineManager] [${task.name}] Started`);
         
         try {
@@ -216,6 +222,7 @@ export class PipelineManager {
         },
       });
  
+      logger.info(`[Repository: ${this.repositoryId}] Repository ready`);
       logger.info(`[PipelineManager] Pipeline execution completed successfully in ${this.ctx.duration} seconds`);
     } catch (err: any) {
       const errMsg = err.message || "Unknown pipeline error.";

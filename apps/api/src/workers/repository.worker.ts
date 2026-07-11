@@ -10,6 +10,7 @@ export const repositoryWorker = new Worker(
   async (job: Job) => {
     const { repositoryId, userId } = job.data;
 
+    logger.info(`[Repository: ${repositoryId}] Worker received job: Job ID ${job.id}`);
     logger.info(`[Repository: ${repositoryId}] Worker picked job: Job ID ${job.id} picked up for processing`);
 
     const pipeline = new PipelineManager(repositoryId, userId);
