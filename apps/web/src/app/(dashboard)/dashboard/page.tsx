@@ -21,6 +21,7 @@ import { Container } from "@/components/common/Container"
 import { Heading } from "@/components/common/Heading"
 import { Badge } from "@/components/common/Badge"
 import { Button } from "@/components/ui/button"
+import { RepoSelectionModal } from "@/features/dashboard/components/RepoSelectionModal"
 import { RepositoryDetails } from "@/features/dashboard/types"
 
 const mockRepositories: RepositoryDetails[] = [
@@ -89,6 +90,7 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = React.useState("")
   const [repositories, setRepositories] = React.useState<RepositoryDetails[]>(mockRepositories)
   const [syncingId, setSyncingId] = React.useState<string | null>(null)
+  const [isRepoModalOpen, setIsRepoModalOpen] = React.useState(false)
 
   // Filter repositories based on search
   const filteredRepos = repositories.filter((repo) =>
@@ -104,7 +106,7 @@ export default function DashboardPage() {
   )
 
   const handleConnectRepo = () => {
-    toast.info("Repository integration will be implemented in the next sprint.")
+    setIsRepoModalOpen(true)
   }
 
   const handleSyncRepo = (id: string, name: string) => {
@@ -352,6 +354,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </Container>
+      <RepoSelectionModal isOpen={isRepoModalOpen} onClose={() => setIsRepoModalOpen(false)} />
     </div>
   )
 }

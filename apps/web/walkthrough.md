@@ -1,60 +1,55 @@
-# Walkthrough - Milestone 3.3.1 GitHub Repository Backend Fetching
+# Walkthrough - Milestone 3.3.2 GitHub Repository Selection Modal
 
-A backend module has been deployed to communicate with the GitHub REST API and fetch repositories for authenticated Clerk users using their stored GitHub OAuth access tokens.
+A premium user-friendly repository picker modal component has been designed and integrated with the dashboard page layout. It pulls from `/api/v1/github/repositories` using the client SDK, enables client-side searching, sorting, and multi-selection, and logs selected records upon submission.
 
 ## Files Created
-- **GitHub Integration Service Directory** ([apps/api/src/services/github/](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/github/)):
-  - [github.types.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/github/github.types.ts): Declares `GitHubRepositoryDto` containing strictly typed properties (`githubRepoId`, `name`, `fullName`, `cloneUrl`, `stars`, `forks`, `watchers`, etc.).
-  - [github.mapper.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/github/github.mapper.ts): Maps raw JSON items returned from GitHub REST endpoints into the DTO format.
-  - [github.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/github/github.service.ts):
-    * Retrieves user GitHub OAuth tokens from Clerk using `clerkClient.users.getUserOauthAccessToken()`.
-    * Triggers request to `https://api.github.com/user/repos` sorted by update activity.
-    * Parses errors, controls limit rate limits, and throws typed `AppError` values.
+- **Repo Selection Modal Component** ([apps/web/src/features/dashboard/components/RepoSelectionModal.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/components/RepoSelectionModal.tsx)):
+  - Declares the `RepoSelectionModal` component structure.
+  - Controls loading skeletons, search/sort filters, and multi-checkbox select states.
+  - Logs selected repositories to the console upon importing.
 
 ## Files Modified
-- **GitHub Controller** ([apps/api/src/controllers/github.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/github.controller.ts)):
-  - Updated constructor to inject the new `GitHubService`.
-  - Extract the logged-in Clerk `userId` from `req.auth` and returns a list of mapped repositories.
-- **GitHub Routes** ([apps/api/src/routes/github.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/github.routes.ts)):
-  - Link standard paths to import the new `GitHubService` inside the constructor.
-
-## Files Deleted
-- **Legacy Service file**: [apps/api/src/services/github.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/github.service.ts)
+- **Dashboard Page Component** ([apps/web/src/app/(dashboard)/dashboard/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/page.tsx)):
+  - Wire the modal visibility trigger `isRepoModalOpen` to the "Connect Repository" button handler.
 
 ---
 
-## Authentication & API Fetch Flow
+## Interactive Select Loop
 
 ```mermaid
 graph TD
-    Client["Front-End App Dashboard"]
-    Middleware["requireAuth Middleware"]
-    Controller["GitHubController (github.controller.ts)"]
-    Clerk["Clerk API (clerkClient)"]
-    Service["GitHubService (github.service.ts)"]
-    GithubAPI["GitHub REST API (/user/repos)"]
+    Dashboard["Dashboard (page.tsx)"]
+    ConnectBtn["Connect Repository Button"]
+    Modal["RepoSelectionModal (RepoSelectionModal.tsx)"]
+    FetchRepos["Fetch GET /api/v1/github/repositories"]
+    RenderRepos["Render cards & Search/Sort filters"]
+    SelectRepo["User toggles card selection checkbox"]
+    FooterBtn["Click 'Import Selected'"]
+    ConsoleLog["Log selection array & show Sonner toast info"]
 
-    Client -- "GET /api/v1/github/repositories" --> Middleware
-    Middleware -- "Append req.auth.userId" --> Controller
-    Controller -- "getUserRepositories(userId)" --> Service
-    Service -- "1. getUserOauthAccessToken(userId)" --> Clerk
-    Clerk -- "Return OAuth Access Token" --> Service
-    Service -- "2. GET /user/repos (with Token header)" --> GithubAPI
-    GithubAPI -- "Return raw JSON repo list" --> Service
-    Service -- "3. Map list to DTO & Return" --> Controller
-    Controller -- "Response { success: true, repositories: [...] }" --> Client
+    Dashboard --> ConnectBtn
+    ConnectBtn --> Modal
+    Modal --> FetchRepos
+    FetchRepos --> RenderRepos
+    RenderRepos --> SelectRepo
+    SelectRepo --> FooterBtn
+    FooterBtn --> ConsoleLog
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Start the API backend**:
-   ```bash
-   npm run dev
-   ```
+1. **Start the applications**:
+   - Run the development environment:
+     ```bash
+     npm run dev
+     ```
 
-2. **Trigger local endpoint checks**:
-   - Acquire a valid Clerk session token or access the route via your browser dashboard.
-   - Dispatch `GET http://localhost:4000/api/v1/github/repositories`.
-   - Confirm that the server securely contacts Clerk, resolves the token, fetches repository metadata, and returns standard success JSON responses.
+2. **Trigger the Modal Dialog**:
+   - Access the dashboard page at `/dashboard`.
+   - Click the "Connect Repository" button in the upper right.
+   - Verify that the loading skeleton mounts and then displays the fetched repositories list.
+   - Type search queries to verify that search filters list matching repositories.
+   - Toggle sorting to test sorting by name, stars, and recently updated values.
+   - Select multiple cards and click **Import Selected**. Check that the browser developer tools console outputs the selected array and triggers a `Sonner` info toast alert.
