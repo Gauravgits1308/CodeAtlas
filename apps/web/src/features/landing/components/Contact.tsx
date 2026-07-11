@@ -1,15 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { Mail, Phone, Github, MapPin, Loader2, Send } from "lucide-react"
+import { Mail, Phone, MapPin, Loader2, Send } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
 import { Container } from "@/components/common/Container"
+import { Section } from "@/components/common/Section"
 import { Heading } from "@/components/common/Heading"
 import { Badge } from "@/components/common/Badge"
 import { Button } from "@/components/ui/button"
 
-export default function ContactPage() {
+export function Contact() {
   const [formData, setFormData] = React.useState({
     name: "",
     email: "",
@@ -26,7 +27,7 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Client-side validations
+    // Frontend validations
     if (!formData.name.trim()) {
       toast.error("Please enter your name.")
       return
@@ -46,6 +47,7 @@ export default function ContactPage() {
 
     setIsSubmitting(true)
     try {
+      // Connect to the backend API endpoint
       const response = await api.post<{ success: boolean; message: string }>("/v1/contact", formData)
       toast.success(response.message || "Message sent successfully!")
       
@@ -65,13 +67,13 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="py-20 bg-[#0B0F19] text-foreground min-h-screen">
-      <Container className="max-w-6xl space-y-12">
+    <Section id="contact" className="border-t border-border/40 bg-[#0B0F19]">
+      <Container className="space-y-12">
         <div className="text-center space-y-4 max-w-2xl mx-auto">
           <Badge variant="purpleGlow" className="px-3.5 py-1 text-xs font-semibold uppercase tracking-wider">
             Get In Touch
           </Badge>
-          <Heading level="h1" className="text-4xl sm:text-5xl font-extrabold tracking-tight">
+          <Heading level="h2" className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             Contact Us
           </Heading>
           <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
@@ -79,11 +81,11 @@ export default function ContactPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-8 items-start">
-          {/* Left Side: Info */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-8 items-start max-w-6xl mx-auto">
+          {/* Left Column: Contact Information */}
           <div className="lg:col-span-5 space-y-8 bg-[#111827]/20 border border-border/20 rounded-2xl p-6 sm:p-8 backdrop-blur-md">
             <div className="space-y-2">
-              <h2 className="text-xl sm:text-2xl font-bold">Contact Details</h2>
+              <h3 className="text-xl sm:text-2xl font-bold">Contact Details</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Fill out the form on the right or reach our project office directly through any of the channels below.
               </p>
@@ -116,24 +118,6 @@ export default function ContactPage() {
                 </div>
               </div>
 
-              {/* GitHub */}
-              <div className="flex items-start gap-4">
-                <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
-                  <Github className="size-5" />
-                </div>
-                <div>
-                  <span className="block text-xs text-muted-foreground font-semibold uppercase tracking-wider">GitHub</span>
-                  <a 
-                    href="https://github.com/Gauravgits1308" 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-sm font-semibold hover:text-purple-400 transition-colors"
-                  >
-                    github.com/Gauravgits1308
-                  </a>
-                </div>
-              </div>
-
               {/* Location */}
               <div className="flex items-start gap-4">
                 <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
@@ -149,7 +133,7 @@ export default function ContactPage() {
             </div>
           </div>
 
-          {/* Right Side: Contact Form */}
+          {/* Right Column: Contact Form */}
           <form 
             onSubmit={handleSubmit}
             className="lg:col-span-7 bg-[#111827]/30 border border-border/20 rounded-2xl p-6 sm:p-8 backdrop-blur-md space-y-6"
@@ -241,6 +225,6 @@ export default function ContactPage() {
           </form>
         </div>
       </Container>
-    </div>
+    </Section>
   )
 }

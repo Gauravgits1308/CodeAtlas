@@ -30,12 +30,12 @@ export function Navbar() {
   }, [])
 
   const navLinks = [
-    { name: "Home", href: "/" },
+    { name: "Home", href: "/#home" },
     { name: "Features", href: "/#features" },
-    { name: "About Us", href: "/about" },
-    { name: "Documentation", href: "#documentation" },
+    { name: "About", href: "/#about" },
+    { name: "Documentation", href: "/#documentation" },
     { name: "Pricing", href: "#", badge: "Soon" },
-    { name: "Contact Us", href: "/contact" },
+    { name: "Contact", href: "/#contact" },
   ]
 
   return (

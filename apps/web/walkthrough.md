@@ -1,59 +1,62 @@
-# Walkthrough - Milestone 3.3.2 Dedicated About & Contact Pages
+# Walkthrough - Milestone 3.3.3 Landing Page Information Architecture
 
-Dedicated marketing pages for `/about` and `/contact` have been successfully created alongside the backend REST API query handler to support structured user queries.
+The standalone About and Contact pages have been successfully retired, and their contents refactored as modular, high-quality, scrolling sections on the main landing page, creating a single unified SaaS marketing home route.
 
-## Backend Changes
-- **Contact Controller** ([apps/api/src/controllers/contact.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/contact.controller.ts)):
-  - Implemented validation for `name`, `email`, `subject`, and `message`.
-  - Configured Winston logs to capture form inputs securely and output forwarding records.
-- **Contact Router & Mounting** ([apps/api/src/routes/contact.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/contact.routes.ts) & [apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Registered `POST /api/v1/contact` to map to the `submitContact` controller.
+## Files Deleted
+- **Standalone About Route**: `/about` (`apps/web/src/app/(marketing)/about/page.tsx`)
+- **Standalone Contact Route**: `/contact` (`apps/web/src/app/(marketing)/contact/page.tsx`)
 
-## Frontend Changes
+## Files Created
+- **About Landing Section** ([apps/web/src/features/landing/components/About.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/About.tsx)):
+  - Declares the `#about` section id.
+  - Highlights Our Mission (simplifying codebase context), Why CodeAtlas (6-card grid), and Built With (interactive tech stack grid).
+- **Documentation Landing Section** ([apps/web/src/features/landing/components/Documentation.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/Documentation.tsx)):
+  - Declares the `#documentation` section id.
+  - Features a developer-oriented Quick Start schema, Core Features description, visually aligned Architecture Pipeline flow, System Specifications, and Coming Soon roadmap updates.
+- **Contact Landing Section** ([apps/web/src/features/landing/components/Contact.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/Contact.tsx)):
+  - Declares the `#contact` section id.
+  - Renders left-hand contact details (Email, Phone, Location) and right-hand contact form query fields linked directly to our backend endpoint at `POST /api/v1/contact`.
+
+## Files Modified
+- **Landing Page Entry** ([apps/web/src/app/(marketing)/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(marketing)/page.tsx)):
+  - Mounted `About`, `Documentation`, and `Contact` components on the homepage sequence.
 - **Navbar Layout Component** ([apps/web/src/components/layout/Navbar.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/layout/Navbar.tsx)):
-  - Updated links for About Us and Contact Us to redirect to `/about` and `/contact`.
-- **About Page** ([apps/web/src/app/(marketing)/about/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(marketing)/about/page.tsx)):
-  - Design highlighting project hero metrics, core product features (AI Analysis, Semantic Search, Chat), mission, and visual technology stack cards.
-- **Contact Page** ([apps/web/src/app/(marketing)/contact/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(marketing)/contact/page.tsx)):
-  - Renders left-hand info panel (Email: gaurav.init13@gmail.com, Phone: +91 9628135776, GitHub, Location) and a professional styled form.
-  - Submits queries asynchronously using Next.js proxy client, validating fields and presenting notifications using `sonner` toasts.
+  - Reset navigation targets to smooth-scroll directly to homepage anchors (`/#home`, `/#features`, `/#about`, `/#documentation`, `/#contact`).
 
 ---
 
-## Architecture Flow
+## Single Page Marketing Architecture
 
 ```mermaid
 graph TD
-    Client["Contact Page (/contact)"]
-    NextProxy["Next.js Rewrite Rewrite Proxy (/api)"]
-    API["Express App API Server (:4000)"]
-    ContactController["ContactController.submitContact"]
-    Winston["Winston Logger"]
+    Navbar["Navbar Component (Navbar.tsx)"]
+    HeroSec["1. Hero (#home)"]
+    FeaturesSec["2. Features (#features)"]
+    PreviewSec["3. Product Preview"]
+    WhySec["4. Why CodeAtlas"]
+    AboutSec["5. About (#about)"]
+    DocSec["6. Documentation (#documentation)"]
+    RoadmapSec["7. Roadmap"]
+    FAQSec["8. FAQ"]
+    ContactSec["9. Contact (#contact)"]
 
-    Client -- "POST /api/v1/contact" --> NextProxy
-    NextProxy -- "Proxy Destination" --> API
-    API -- "Route Match" --> ContactController
-    ContactController -- "1. Validate fields" --> ContactController
-    ContactController -- "2. Log message query details" --> Winston
-    ContactController -- "3. Return 200 JSON success response" --> Client
+    Navbar -- "Click Home" --> HeroSec
+    Navbar -- "Click Features" --> FeaturesSec
+    Navbar -- "Click About" --> AboutSec
+    Navbar -- "Click Documentation" --> DocSec
+    Navbar -- "Click Contact" --> ContactSec
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Navigation Route Jump**:
+1. **Verify Smooth Scrolling**:
    - Access `http://localhost:3000/`.
-   - Click **About Us** or **Contact Us** and verify you navigate directly to `/about` and `/contact` respectively.
+   - Click the navigation headers: **Features**, **About**, **Documentation**, **Contact**.
+   - Verify that the window smoothly transitions directly to the respective homepage section.
 
-2. **Verify Contact Form API Integration**:
-   - Navigate to `http://localhost:3000/contact`.
-   - Fill out the contact form details.
-   - Click **Send Message**.
-   - Verify that a success alert is shown and form fields are reset.
-   - Inspect backend logs to confirm that the Winston logger prints the query parameters successfully:
-     ```
-     [Contact Form Submission]
-     Name: ...
-     Email: ...
-     ```
+2. **Verify Integrated Contact Submissions**:
+   - Scroll to the bottom Contact section.
+   - Enter contact details and submit.
+   - Verify that alerts/notifications update successfully and inputs reset as before.
