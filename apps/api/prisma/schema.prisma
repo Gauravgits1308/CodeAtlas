@@ -110,6 +110,7 @@ model ChunkEmbedding {
   provider   String
   model      String
   dimensions Int
+  embedding  Unsupported("vector")?
 
   createdAt  DateTime  @default(now())
   updatedAt DateTime @updatedAt
