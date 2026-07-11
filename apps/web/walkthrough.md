@@ -1,58 +1,68 @@
-# Walkthrough - Milestone 4.7 Real-Time Streaming AI Responses
+# Walkthrough - Milestone 4.8 Repository Conversation Memory
 
-The CodeAtlas platform now supports token-by-token real-time streaming chat responses using Server-Sent Events (SSE) and client readable streams.
+The CodeAtlas workspace now supports multi-turn conversations, persistence of chat sessions, and intelligent sliding window/summarization context compression.
 
 ## Files Created / Modified
+- **Prisma Schema** ([apps/api/prisma/schema.prisma](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/prisma/schema.prisma)):
+  - Extended model layouts with `Conversation` and `Message` tables mapped to `User` and `Repository`.
+- **Repository Conversation Service** ([apps/api/src/services/repository-conversation.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-conversation.service.ts)):
+  - Implemented `createConversation`, `listConversations`, `renameConversation`, `deleteConversation`, and `addMessage` persistence routines.
+  - Implemented `getHistoryContext` using a sliding window strategy (last 6 messages) and automated summarization of older dialogue pairs using OpenRouter.
+- **Conversation Controller** ([apps/api/src/controllers/conversation.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/conversation.controller.ts)):
+  - Added endpoints list, rename, delete, and messages query methods.
+- **Conversation Router** ([apps/api/src/routes/conversation.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/conversation.routes.ts)):
+  - Mounted `/api/v1/conversations` paths.
+- **REST Index** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
+  - Registered conversation routes globally.
 - **Repository Chat Service** ([apps/api/src/services/repository-chat.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-chat.service.ts)):
-  - Added `chatStream` integrating the OpenRouter completions API with `stream: true`.
-  - Added check handles matching `signal.aborted` to abort generation instantly if connections are cancelled.
-  - Setup logging details capturing Stream Started, First Token Latency, Completion Time, Tokens count, and Client Cancellation events.
+  - Adjusted RAG executions to load context history and append user/assistant messages to SQL database.
 - **Chat Controller** ([apps/api/src/controllers/chat.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/chat.controller.ts)):
-  - Declared `chatStream` mapping parameters, writing SSE chunk headers (`text/event-stream`), and proxying request cancellation `req.on("close")` connections.
-- **Chat Router** ([apps/api/src/routes/chat.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/chat.routes.ts)):
-  - Mounted `/stream` POST route configuration.
+  - Enabled dynamic conversation creations and initial `conversationId` emissions over SSE stream.
 - **API Client Utility** ([apps/web/src/lib/api-client.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/lib/api-client.ts)):
-  - Exposed a `public async stream(...)` helper wrapping readable streams fetch requests with authentication token configurations and signal cancellation inputs.
+  - Expose PATCH helper mapping endpoint requests.
 - **Chat Workspace Page** ([apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
-  - Integrated `api.stream(...)` to consume the token stream reader sequentially.
-  - Enabled typing inside input fields while generation is running.
-  - Bound `AbortController` to stop generation instantly, replacing the send button with a square Stop button when submitting is active.
-  - Programmed a blinking indicator animation representing the typing cursor at the end of the streaming response.
+  - Added History Sidebar Panel inside the AI column listing recent chats.
+  - Added New Chat, Continue Chat, Rename Conversation, Delete Conversation, and Clear Chat state features.
 
 ---
 
-## Real-Time SSE Token Streaming Flow
+## Multi-Turn Conversational Memory Pipeline
 
 ```mermaid
 graph TD
-    User["User inputs query and hits Send"]
-    AbortCtrl["Instantiate AbortController and bind signal"]
-    FetchStream["POST /api/v1/chat/stream"]
-    SSEHeaders["Set headers text/event-stream & no-cache"]
-    LLMStream["Call OpenRouter chat.completions.create(stream: true)"]
-    TokenEmit["Emit token chunks sequentially"]
-    ClientRender["Update state and parse markdown progressively"]
-    ClientStop["Stop Generation clicked -> AbortController.abort()"]
+    UserQuery["User POST /api/v1/chat/stream { repositoryId, question, conversationId? }"]
+    FindOrCreate["Find or Create Conversation (UserId, RepoId)"]
+    MemoryLoad["Load last N messages (Sliding Window / Compression)"]
+    ModeDetect["Detect Mode (Explain, Review, etc.)"]
+    Search["RepositorySearchService.search(question + historyContext)"]
+    PromptBuild["Build Prompt (History + Context + Question)"]
+    LLM["Stream OpenRouter API completions"]
+    SaveMessage["Save User & Assistant messages to Message Database"]
+    Telemetry["Log Memory Tokens, Summarizations, latency"]
 
-    User --> AbortCtrl
-    AbortCtrl --> FetchStream
-    FetchStream --> SSEHeaders
-    SSEHeaders --> LLMStream
-    LLMStream --> TokenEmit
-    TokenEmit --> ClientRender
-    ClientStop -.-> FetchStream
+    UserQuery --> FindOrCreate
+    FindOrCreate --> MemoryLoad
+    MemoryLoad --> ModeDetect
+    ModeDetect --> Search
+    Search --> PromptBuild
+    PromptBuild --> LLM
+    LLM --> SaveMessage
+    SaveMessage --> Telemetry
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Token Streaming**:
-   - Access `/dashboard/repository/REPO_ID/chat`.
-   - Input a question and observe that instead of waiting for the full answer, tokens render character-by-character as they are generated.
-2. **Verify Stop Generation / Cancellation**:
-   - Ask a question requiring a long response (e.g. `Provide a detailed refactoring recommendation`).
-   - While the text is actively streaming, click the square "Stop" button in the chat input.
-   - Verify that the generation stops instantly and prints a "Generation cancelled" toast notification.
-3. **Verify Typing While Generating**:
-   - Verify that the text input remains fully editable and you can draft your next question while the assistant streams.
+1. **Verify Chat Persistence Sidebar**:
+   - Open `/dashboard/repository/REPO_ID/chat`.
+   - Click the "History" (clock icon) button in the assistant header.
+   - Verify that your recent conversations are listed, showing titles and last updated dates.
+2. **Verify Multi-Turn Context**:
+   - Start a new conversation and ask: `"What database configuration is mapped in this project?"`.
+   - Once answered, ask a follow-up: `"Where is it declared?"` (omitting database context).
+   - Confirm that the AI uses conversation memory history to correctly locate `schema.prisma` or `database.ts`.
+3. **Verify Renames & Deletes**:
+   - Hover over a conversation item in the history list.
+   - Click the pencil icon to rename, input a new title, and click "Save".
+   - Click the trash icon to delete a conversation thread and verify it gets removed.

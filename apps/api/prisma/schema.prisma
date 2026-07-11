@@ -23,6 +23,7 @@ model User {
   email        String       @unique
   name         String?
   repositories Repository[]
+  conversations Conversation[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -49,6 +50,7 @@ model Repository {
   metrics       CodeMetric?
   syncLogs      SyncLog[]
   chunks        CodeChunk[]
+  conversations Conversation[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -111,4 +113,31 @@ model ChunkEmbedding {
 
   createdAt  DateTime  @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Conversation {
+  id           String      @id @default(uuid())
+  repositoryId String
+  repository   Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  messages     Message[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([repositoryId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // "user" | "assistant"
+  content        String
+  sources        Json?        // To store source citations
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
 }

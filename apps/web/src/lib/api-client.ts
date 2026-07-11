@@ -91,6 +91,14 @@ class ApiClient {
     })
   }
 
+  public patch<T>(path: string, data?: unknown, options?: Omit<RequestOptions, "method" | "body">): Promise<T> {
+    return this.request<T>(path, {
+      ...options,
+      method: "PATCH",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
   public delete<T>(path: string, options?: Omit<RequestOptions, "method">): Promise<T> {
     return this.request<T>(path, { ...options, method: "DELETE" })
   }

@@ -18,7 +18,10 @@ import {
   Terminal, 
   ArrowRight, 
   Sparkles, 
-  Code 
+  Code,
+  History,
+  Trash2,
+  Edit2
 } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
@@ -76,6 +79,13 @@ interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
+interface Conversation {
+  id: string
+  title: string
+  updatedAt: string
+  createdAt: string
+}
+
 const SUGGESTED_CARDS = [
   { icon: "🏗", title: "Explain Architecture", text: "Explain repository architecture" },
   { icon: "🔐", title: "Explain Authentication", text: "Where is authentication handled?" },
@@ -131,6 +141,13 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [abortController, setAbortController] = React.useState<AbortController | null>(null)
 
+  // Conversation Memory State
+  const [conversations, setConversations] = React.useState<Conversation[]>([])
+  const [conversationId, setConversationId] = React.useState<string | null>(null)
+  const [showHistoryList, setShowHistoryList] = React.useState(false)
+  const [isEditingConvoId, setIsEditingConvoId] = React.useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = React.useState("")
+
   // Explorer State
   const [filesTree, setFilesTree] = React.useState<FileTreeNode[]>([])
   const [searchFilter, setSearchFilter] = React.useState("")
@@ -145,6 +162,21 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   const chatEndRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  // Fetch recent conversations for this repo
+  const fetchConversations = React.useCallback(async () => {
+    try {
+      const res = await api.get<{ success: boolean; conversations: Conversation[] }>(
+        `/v1/conversations?repositoryId=${repositoryId}`
+      )
+      if (res.success) {
+        setConversations(res.conversations)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      console.error("Failed to load conversations:", error.message)
+    }
+  }, [repositoryId])
 
   // Fetch repository metadata and file tree list
   React.useEffect(() => {
@@ -192,6 +224,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         if (filesRes.success) {
           setFilesTree(filesRes.files)
         }
+
+        await fetchConversations()
       } catch (err: unknown) {
         const error = err as Error
         toast.error(error.message || "Failed to initialize workspace data.")
@@ -201,7 +235,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }
 
     fetchRepoData()
-  }, [repositoryId, router])
+  }, [repositoryId, router, fetchConversations])
 
   // Scroll to chat bottom on new messages
   React.useEffect(() => {
@@ -320,7 +354,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     try {
       await api.stream(
         "/v1/chat/stream",
-        { repositoryId, question: text },
+        { repositoryId, question: text, conversationId },
         (chunk) => {
           const lines = chunk.split("\n")
           let currentEvent = ""
@@ -336,7 +370,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               }
               try {
                 const parsed = JSON.parse(dataStr)
-                if (currentEvent === "sources") {
+                if (currentEvent === "conversationId") {
+                  setConversationId(parsed.conversationId)
+                  fetchConversations()
+                } else if (currentEvent === "sources") {
                   setMessages((prev) =>
                     prev.map((msg) =>
                       msg.id === assistantMessageId
@@ -382,6 +419,77 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  // Conversation Sidebar Actions
+  const handleNewChat = () => {
+    setConversationId(null)
+    setMessages([])
+    setShowHistoryList(false)
+  }
+
+  const handleSelectConvo = async (convoId: string) => {
+    setConversationId(convoId)
+    setMessages([])
+    setShowHistoryList(false)
+    setIsSubmitting(true)
+
+    try {
+      const res = await api.get<{ success: boolean; messages: { id: string; role: string; content: string; sources?: unknown }[] }>(
+        `/v1/conversations/${convoId}/messages`
+      )
+      if (res.success) {
+        const mapped = res.messages.map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          sources: m.sources ? JSON.parse(JSON.stringify(m.sources)) : undefined,
+        }))
+        setMessages(mapped)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to load past conversation messages.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleRenameConvo = async (convoId: string) => {
+    if (!editingTitle.trim()) return
+    try {
+      const res = await api.patch<{ success: boolean }>(
+        `/v1/conversations/${convoId}`,
+        { title: editingTitle.trim() }
+      )
+      if (res.success) {
+        toast.success("Conversation renamed.")
+        fetchConversations()
+        setIsEditingConvoId(null)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to rename conversation.")
+    }
+  }
+
+  const handleDeleteConvo = async (convoId: string) => {
+    if (!confirm("Are you sure you want to delete this conversation?")) return
+    try {
+      const res = await api.delete<{ success: boolean }>(
+        `/v1/conversations/${convoId}`
+      )
+      if (res.success) {
+        toast.success("Conversation deleted.")
+        fetchConversations()
+        if (conversationId === convoId) {
+          handleNewChat()
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to delete conversation.")
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -389,14 +497,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  const toggleFolder = (path: string) => {
+    setExpandedFolders((prev) => ({ ...prev, [path]: !prev[path] }))
+  }
+
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code)
     setCopiedCode(true)
     setTimeout(() => setCopiedCode(false), 2000)
-  }
-
-  const toggleFolder = (path: string) => {
-    setExpandedFolders((prev) => ({ ...prev, [path]: !prev[path] }))
   }
 
   // Filter tree nodes recursively
@@ -496,7 +604,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       <aside className={`w-72 border-r border-border/20 bg-[#0A0D15] flex flex-col shrink-0 z-30 transition-transform duration-200 absolute inset-y-0 left-0 md:relative md:translate-x-0 ${
         activeTab === "explorer" ? "translate-x-0" : "-translate-x-full"
       }`}>
-        {/* Explorer Header */}
         <div className="p-4 border-b border-border/10 flex items-center justify-between select-none">
           <div className="flex items-center gap-2">
             <Terminal className="size-4 text-primary" />
@@ -504,7 +611,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* File Search Input */}
         <div className="p-3 border-b border-border/10 select-none">
           <div className="relative bg-[#111622] border border-border/25 rounded-xl p-2 flex items-center gap-2 focus-within:border-primary/45 transition-colors">
             <Search className="size-3.5 text-muted-foreground shrink-0" />
@@ -518,7 +624,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* Tree Container (Independently scrollable) */}
         <div className="flex-1 overflow-y-auto p-3 pr-2 scrollbar-thin">
           {getFilteredNodes().length > 0 ? (
             renderTree(getFilteredNodes())
@@ -536,7 +641,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       }`}>
         {selectedFilePath ? (
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-            {/* Sticky File Header */}
             <div className="px-4 py-3 bg-[#111622]/60 border-b border-border/15 flex items-center justify-between gap-4 select-none shrink-0 font-mono text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5 font-mono text-foreground font-semibold">
                 <FileCode className="size-4 text-primary" />
@@ -565,7 +669,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
 
-            {/* Code Body Container (Independently scrollable) */}
             <div className="flex-1 overflow-auto p-4 select-text">
               {isLoadingFile ? (
                 <div className="flex flex-col items-center justify-center h-full gap-2 font-mono text-xs text-muted-foreground">
@@ -574,7 +677,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                 </div>
               ) : fileContents[selectedFilePath] ? (
                 <div className="flex font-mono text-[11px] text-[#E2E8F0] min-w-max select-text">
-                  {/* Line numbers column */}
                   <div className="text-muted-foreground/30 text-right pr-4 border-r border-border/10 select-none min-w-8 font-mono">
                     {fileContents[selectedFilePath].split("\n").map((_, lineIdx) => (
                       <div key={lineIdx} className="min-h-6 flex items-center justify-end font-mono">
@@ -582,7 +684,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                       </div>
                     ))}
                   </div>
-                  {/* Code lines column */}
                   <div className="flex-1 pl-4 font-mono select-text">
                     {fileContents[selectedFilePath].split("\n").map((lineContent, lineIdx) => {
                       const lineNumber = lineIdx + 1
@@ -634,12 +735,24 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         <div className="p-4 border-b border-border/10 bg-[#0A0D15]/40 select-none shrink-0 space-y-2">
           <div className="flex items-center justify-between gap-2.5">
             <Heading level="h3" className="text-xs font-extrabold font-mono text-muted-foreground truncate uppercase tracking-wider">
-              Grounded Assistant
+              {showHistoryList ? "History List" : "Grounded Assistant"}
             </Heading>
-            <Badge variant="outline" className="text-[9px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 py-0 px-2 font-mono">
-              <CheckCircle className="size-2.5 mr-1" />
-              <span>AI Ready</span>
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setShowHistoryList(!showHistoryList)}
+                variant="ghost"
+                className={`size-7 p-0 rounded-lg hover:bg-[#1A233C]/20 transition-all ${
+                  showHistoryList ? "text-primary bg-primary/10" : "text-muted-foreground"
+                }`}
+                title="Conversations History"
+              >
+                <History className="size-4.5" />
+              </Button>
+              <Badge variant="outline" className="text-[9px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 py-0 px-2 font-mono">
+                <CheckCircle className="size-2.5 mr-1" />
+                <span>AI Ready</span>
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-muted-foreground/80 bg-[#111622]/40 p-2.5 border border-border/10 rounded-xl">
@@ -650,115 +763,212 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        {/* Conversation Message Area (Independently scrollable) */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 select-text scrollbar-thin">
-          {messages.length === 0 ? (
-            /* Empty State Layout */
-            <div className="py-12 space-y-6 text-center select-none max-w-sm mx-auto">
-              <div className="size-12 rounded-2xl bg-primary/15 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse shadow-lg shadow-primary/5">
-                <Sparkles className="size-5.5" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-bold text-sm text-foreground">Interactive Repository Chat</h3>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Ask natural language questions about files, architecture, modules, or configurations.
-                </p>
-              </div>
+        {/* Dynamic Sidebar history switch / Chat viewport */}
+        {showHistoryList ? (
+          /* Historical Conversations List */
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin select-none">
+            <div className="flex items-center justify-between gap-2 mb-2 select-none">
+              <span className="text-[9px] uppercase font-bold text-muted-foreground/50 tracking-wider font-mono">Recent Conversations</span>
+              <Button
+                onClick={handleNewChat}
+                variant="ghost"
+                className="text-[10px] h-7 px-2 font-mono text-primary hover:bg-primary/5 shrink-0 cursor-pointer"
+              >
+                + New Chat
+              </Button>
+            </div>
 
-              {/* Suggested Questions Grid Cards */}
-              <div className="space-y-2 pt-2">
-                <span className="text-[9px] uppercase font-bold text-muted-foreground/50 tracking-wider font-mono block">Suggested Questions</span>
-                <div className="grid grid-cols-1 gap-2">
-                  {SUGGESTED_CARDS.map((card, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSend(card.text)}
-                      disabled={isSubmitting}
-                      className="flex items-center justify-between text-left px-3.5 py-2.5 bg-[#111622]/40 border border-border/15 hover:border-primary/45 hover:bg-[#1A233C]/20 text-[11px] text-muted-foreground hover:text-foreground rounded-xl transition-all font-mono leading-snug cursor-pointer"
+            {conversations.length === 0 ? (
+              <div className="text-center text-xs text-muted-foreground/30 font-mono py-12 select-none">
+                No past conversations
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {conversations.map((convo) => {
+                  const isActive = convo.id === conversationId
+                  const isEditing = convo.id === isEditingConvoId
+
+                  return (
+                    <div
+                      key={convo.id}
+                      className={`p-3 border rounded-xl transition-all duration-150 relative group ${
+                        isActive 
+                          ? "bg-primary/10 border-primary/20 text-foreground" 
+                          : "bg-[#111622]/40 border-border/10 hover:border-primary/20 text-muted-foreground hover:text-foreground"
+                      }`}
                     >
-                      <span className="flex items-center gap-2 truncate">
-                        <span>{card.icon}</span>
-                        <span className="truncate">{card.title}</span>
-                      </span>
-                      <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
-                  ))}
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            className="bg-[#0B0F19] border border-border/25 rounded px-2 py-1 text-xs text-foreground focus:outline-none flex-1 min-w-0 font-mono"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleRenameConvo(convo.id)
+                              if (e.key === "Escape") setIsEditingConvoId(null)
+                            }}
+                          />
+                          <button
+                            onClick={() => handleRenameConvo(convo.id)}
+                            className="text-emerald-400 hover:text-emerald-300 font-mono text-[10px] cursor-pointer px-1 font-bold"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setIsEditingConvoId(null)}
+                            className="text-rose-400 hover:text-rose-300 font-mono text-[10px] cursor-pointer px-1 font-bold"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1 pr-14 cursor-pointer" onClick={() => handleSelectConvo(convo.id)}>
+                          <div className="text-xs font-bold font-mono truncate">{convo.title}</div>
+                          <div className="text-[9px] opacity-40 font-mono">
+                            Last active {new Date(convo.updatedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      )}
+
+                      {!isEditing && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setIsEditingConvoId(convo.id)
+                              setEditingTitle(convo.title)
+                            }}
+                            className="p-1 hover:text-primary transition-colors text-muted-foreground/60 cursor-pointer"
+                            title="Rename"
+                          >
+                            <Edit2 className="size-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteConvo(convo.id)}
+                            className="p-1 hover:text-rose-400 transition-colors text-muted-foreground/60 cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Active Chat Conversation Feed (Independently scrollable) */
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 select-text scrollbar-thin">
+            {messages.length === 0 ? (
+              /* Empty State Layout */
+              <div className="py-12 space-y-6 text-center select-none max-w-sm mx-auto">
+                <div className="size-12 rounded-2xl bg-primary/15 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse shadow-lg shadow-primary/5">
+                  <Sparkles className="size-5.5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-sm text-foreground">Interactive Repository Chat</h3>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Ask natural language questions about files, architecture, modules, or configurations.
+                  </p>
+                </div>
+
+                {/* Suggested Questions Grid Cards */}
+                <div className="space-y-2 pt-2">
+                  <span className="text-[9px] uppercase font-bold text-muted-foreground/50 tracking-wider font-mono block">Suggested Questions</span>
+                  <div className="grid grid-cols-1 gap-2">
+                    {SUGGESTED_CARDS.map((card, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSend(card.text)}
+                        disabled={isSubmitting}
+                        className="flex items-center justify-between text-left px-3.5 py-2.5 bg-[#111622]/40 border border-border/15 hover:border-primary/45 hover:bg-[#1A233C]/20 text-[11px] text-muted-foreground hover:text-foreground rounded-xl transition-all font-mono leading-snug cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <span>{card.icon}</span>
+                          <span className="truncate">{card.title}</span>
+                        </span>
+                        <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            /* Message lists rendering */
-            <div className="space-y-6">
-              {messages.map((message) => {
-                const isAssistant = message.role === "assistant"
-                const isThinking = isAssistant && message.content === ""
+            ) : (
+              /* Message lists rendering */
+              <div className="space-y-6">
+                {messages.map((message) => {
+                  const isAssistant = message.role === "assistant"
+                  const isThinking = isAssistant && message.content === ""
 
-                return (
-                  <div key={message.id} className={`flex gap-3 ${isAssistant ? "justify-start" : "justify-end"}`}>
-                    {isAssistant && (
-                      <div className="size-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 select-none">
-                        <Sparkles className="size-3.5" />
-                      </div>
-                    )}
-                    <div className="space-y-1.5 max-w-[88%] min-w-0">
-                      <div className="text-[9px] text-muted-foreground/45 font-bold uppercase tracking-wider select-none font-mono">
-                        {isAssistant ? "Assistant" : "User"}
-                      </div>
-                      <div className={`rounded-2xl p-4 text-[11px] leading-relaxed ${
-                        isAssistant ? "bg-[#111622]/30 border border-border/10 text-foreground" : "bg-primary/10 border border-primary/20 text-foreground"
-                      }`}>
-                        {isThinking ? (
-                          <ProgressiveLoader />
-                        ) : isAssistant ? (
-                          <div className="relative">
-                            <Markdown content={message.content} />
-                            {isSubmitting && message.id === messages[messages.length - 1]?.id && (
-                              <span className="inline-block w-1 h-3.5 bg-primary/80 ml-1 animate-pulse" />
-                            )}
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap leading-relaxed font-sans">{message.content}</p>
-                        )}
-
-                        {/* Citations cards display list */}
-                        {isAssistant && !isThinking && message.sources && message.sources.length > 0 && (
-                          <div className="mt-4 pt-3.5 border-t border-border/10 space-y-2 select-none">
-                            <span className="text-[9px] uppercase font-bold text-muted-foreground/40 tracking-wider font-mono block">Citations Sources</span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {message.sources.map((src, sIdx) => {
-                                const similarityPercentage = Math.round(src.similarity * 100)
-                                return (
-                                  <div
-                                    key={sIdx}
-                                    onClick={() => handleOpenCitation(src)}
-                                    className="bg-[#111622]/80 hover:bg-[#1E2538] border border-border/20 hover:border-primary/45 rounded-xl p-2.5 transition-all flex items-center justify-between gap-2 cursor-pointer font-mono text-[9px] text-muted-foreground hover:text-foreground"
-                                  >
-                                    <div className="min-w-0 space-y-0.5">
-                                      <div className="flex items-center gap-1 font-bold text-foreground">
-                                        <FileCode className="size-3 text-primary shrink-0" />
-                                        <span className="truncate">{src.filePath.split("/").pop()}</span>
-                                      </div>
-                                      <div>Lines {src.startLine}-{src.endLine}</div>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <div className="font-bold text-emerald-400 font-mono">{similarityPercentage}%</div>
-                                      <div className="text-[8px] opacity-50">Match</div>
-                                    </div>
-                                  </div>
-                                )
-                              })}
+                  return (
+                    <div key={message.id} className={`flex gap-3 ${isAssistant ? "justify-start" : "justify-end"}`}>
+                      {isAssistant && (
+                        <div className="size-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 select-none">
+                          <Sparkles className="size-3.5" />
+                        </div>
+                      )}
+                      <div className="space-y-1.5 max-w-[88%] min-w-0">
+                        <div className="text-[9px] text-muted-foreground/45 font-bold uppercase tracking-wider select-none font-mono">
+                          {isAssistant ? "Assistant" : "User"}
+                        </div>
+                        <div className={`rounded-2xl p-4 text-[11px] leading-relaxed ${
+                          isAssistant ? "bg-[#111622]/30 border border-border/10 text-foreground" : "bg-primary/10 border border-primary/20 text-foreground"
+                        }`}>
+                          {isThinking ? (
+                            <ProgressiveLoader />
+                          ) : isAssistant ? (
+                            <div className="relative">
+                              <Markdown content={message.content} />
+                              {isSubmitting && message.id === messages[messages.length - 1]?.id && (
+                                <span className="inline-block w-1 h-3.5 bg-primary/80 ml-1 animate-pulse" />
+                              )}
                             </div>
-                          </div>
-                        )}
+                          ) : (
+                            <p className="whitespace-pre-wrap leading-relaxed font-sans">{message.content}</p>
+                          )}
+
+                          {/* Citations cards display list */}
+                          {isAssistant && !isThinking && message.sources && message.sources.length > 0 && (
+                            <div className="mt-4 pt-3.5 border-t border-border/10 space-y-2 select-none">
+                              <span className="text-[9px] uppercase font-bold text-muted-foreground/40 tracking-wider font-mono block">Citations Sources</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {message.sources.map((src, sIdx) => {
+                                  const similarityPercentage = Math.round(src.similarity * 100)
+                                  return (
+                                    <div
+                                      key={sIdx}
+                                      onClick={() => handleOpenCitation(src)}
+                                      className="bg-[#111622]/80 hover:bg-[#1E2538] border border-border/20 hover:border-primary/45 rounded-xl p-2.5 transition-all flex items-center justify-between gap-2 cursor-pointer font-mono text-[9px] text-muted-foreground hover:text-foreground"
+                                    >
+                                      <div className="min-w-0 space-y-0.5">
+                                        <div className="flex items-center gap-1 font-bold text-foreground">
+                                          <FileCode className="size-3 text-primary shrink-0" />
+                                          <span className="truncate">{src.filePath.split("/").pop()}</span>
+                                        </div>
+                                        <div>Lines {src.startLine}-{src.endLine}</div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <div className="font-bold text-emerald-400 font-mono">{similarityPercentage}%</div>
+                                        <div className="text-[8px] opacity-50">Match</div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-        </div>
+                  )
+                })}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Sticky Chat Input Panel (Fixed-bottom) */}
         <div className="border-t border-border/10 bg-[#0F1424]/90 p-4 shrink-0 select-none">
@@ -784,8 +994,13 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               )}
             </Button>
           </div>
-          <div className="text-center text-[9px] text-muted-foreground/35 mt-2 font-mono">
-            Enter to Send, Shift+Enter for newline
+          <div className="text-center text-[9px] text-muted-foreground/35 mt-2 font-mono flex items-center justify-between px-1">
+            <span>Enter to Send, Shift+Enter for newline</span>
+            {conversationId && (
+              <button onClick={handleNewChat} className="text-primary hover:underline cursor-pointer font-bold">
+                + Clear Chat
+              </button>
+            )}
           </div>
         </div>
       </section>

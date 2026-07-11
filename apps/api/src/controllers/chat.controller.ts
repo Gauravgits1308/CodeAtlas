@@ -1,6 +1,7 @@
 /// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from "express";
 import { RepositoryChatService } from "../services/repository-chat.service";
+import { RepositoryConversationService } from "../services/repository-conversation.service";
 import { asyncHandler, AppError } from "../utils/errors";
 import { logger } from "../utils/logger";
 
@@ -11,7 +12,8 @@ export class ChatController {
    * Controller endpoint exposing repository-grounded RAG chat.
    */
   chat = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const { repositoryId, question } = req.body;
+    const userId = req.auth.userId;
+    const { repositoryId, question, conversationId } = req.body;
 
     // 1. Validate repositoryId presence
     if (!repositoryId || typeof repositoryId !== "string" || !repositoryId.trim()) {
@@ -28,15 +30,26 @@ export class ChatController {
       throw new AppError("Question cannot be longer than 3000 characters.", 400);
     }
 
+    // Determine or create conversationId thread
+    let activeConvoId = conversationId;
+    if (!activeConvoId) {
+      const convoService = new RepositoryConversationService();
+      const title = question.length > 35 ? `${question.substring(0, 35)}...` : question;
+      const newConvo = await convoService.createConversation(userId, repositoryId.trim(), title);
+      activeConvoId = newConvo.id;
+    }
+
     // 4. Trigger vector search RAG pipeline
     const chatResult = await this.repositoryChatService.chat(
       repositoryId.trim(),
-      question.trim()
+      question.trim(),
+      activeConvoId
     );
 
     // 5. Respond with structured answers and citations
     res.status(200).json({
       success: true,
+      conversationId: activeConvoId,
       answer: chatResult.answer,
       sources: chatResult.sources,
     });
@@ -46,7 +59,8 @@ export class ChatController {
    * Controller endpoint exposing repository-grounded RAG chat streams.
    */
   chatStream = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const { repositoryId, question } = req.body;
+    const userId = req.auth.userId;
+    const { repositoryId, question, conversationId } = req.body;
 
     // 1. Validate parameters
     if (!repositoryId || typeof repositoryId !== "string" || !repositoryId.trim()) {
@@ -72,6 +86,18 @@ export class ChatController {
     });
 
     try {
+      // Determine or create conversationId thread
+      let activeConvoId = conversationId;
+      if (!activeConvoId) {
+        const convoService = new RepositoryConversationService();
+        const title = question.length > 35 ? `${question.substring(0, 35)}...` : question;
+        const newConvo = await convoService.createConversation(userId, repositoryId.trim(), title);
+        activeConvoId = newConvo.id;
+      }
+
+      // Emit conversationId immediately
+      res.write(`event: conversationId\ndata: ${JSON.stringify({ conversationId: activeConvoId })}\n\n`);
+
       await this.repositoryChatService.chatStream(
         repositoryId.trim(),
         question.trim(),
@@ -97,7 +123,8 @@ export class ChatController {
           },
           addEventListener: () => {},
           removeEventListener: () => {},
-        } as unknown as AbortSignal
+        } as unknown as AbortSignal,
+        activeConvoId
       );
     } catch (err: unknown) {
       const error = err as Error;

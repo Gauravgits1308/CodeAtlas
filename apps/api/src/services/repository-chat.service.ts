@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { config } from "../config";
 import { RepositoryRepository } from "../repositories/repository.repository";
 import { RepositorySearchService } from "./repository-search.service";
+import { RepositoryConversationService } from "./repository-conversation.service";
 import { AppError } from "../utils/errors";
 import { logger } from "../utils/logger";
 
@@ -42,8 +43,9 @@ export class RepositoryChatService {
    *
    * @param repositoryId Target repository ID.
    * @param question The natural language question.
+   * @param conversationId Optional conversation ID for multi-turn history.
    */
-  async chat(repositoryId: string, question: string): Promise<ChatResponse> {
+  async chat(repositoryId: string, question: string, conversationId?: string): Promise<ChatResponse> {
     const totalStartTime = Date.now();
     logger.info(`Chat request received for repo ID: ${repositoryId}, question: "${question}"`);
 
@@ -92,6 +94,24 @@ export class RepositoryChatService {
     const systemPrompt = this.getSystemPromptForMode(mode);
     const userPrompt = `${contextText}Question: ${question}`;
 
+    const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      { role: "system", content: systemPrompt },
+    ];
+
+    // Load conversation history memory if conversationId is provided
+    if (conversationId) {
+      const convoService = new RepositoryConversationService(this.openai);
+      const history = await convoService.getHistoryContext(conversationId);
+      if (history.context) {
+        chatMessages.push({
+          role: "system",
+          content: `Here is the conversation history memory:\n${history.context}`,
+        });
+      }
+    }
+
+    chatMessages.push({ role: "user", content: userPrompt });
+
     logger.info(`Prompt Size: ${userPrompt.length} characters (approx. ${Math.round(userPrompt.length / 4)} tokens)`);
 
     if (!config.openrouterApiKey) {
@@ -113,11 +133,8 @@ export class RepositoryChatService {
     try {
       const response = await this.openai.chat.completions.create({
         model: config.openrouterChatModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.15, // Keep temperature low for structured evaluations
+        messages: chatMessages,
+        temperature: 0.15,
       });
 
       answer = response.choices[0]?.message?.content || "";
@@ -158,6 +175,13 @@ export class RepositoryChatService {
       similarity: chunk.similarity,
     }));
 
+    // Save dialogue thread
+    if (conversationId) {
+      const convoService = new RepositoryConversationService(this.openai);
+      await convoService.addMessage(conversationId, "user", question);
+      await convoService.addMessage(conversationId, "assistant", answer, sources);
+    }
+
     return {
       answer,
       sources,
@@ -173,6 +197,7 @@ export class RepositoryChatService {
    * @param onToken Emit function for generated tokens.
    * @param onEnd Emit function when done.
    * @param signal AbortSignal to close connection.
+   * @param conversationId Optional conversation ID for history.
    */
   async chatStream(
     repositoryId: string,
@@ -180,7 +205,8 @@ export class RepositoryChatService {
     onSources: (sources: ChatSource[]) => void,
     onToken: (token: string) => void,
     onEnd: () => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationId?: string
   ): Promise<void> {
     const totalStartTime = Date.now();
     logger.info(`Stream request received for repo ID: ${repositoryId}, question: "${question}"`);
@@ -238,6 +264,23 @@ export class RepositoryChatService {
     const systemPrompt = this.getSystemPromptForMode(mode);
     const userPrompt = `${contextText}Question: ${question}`;
 
+    const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      { role: "system", content: systemPrompt },
+    ];
+
+    if (conversationId) {
+      const convoService = new RepositoryConversationService(this.openai);
+      const history = await convoService.getHistoryContext(conversationId);
+      if (history.context) {
+        chatMessages.push({
+          role: "system",
+          content: `Here is the conversation history memory:\n${history.context}`,
+        });
+      }
+    }
+
+    chatMessages.push({ role: "user", content: userPrompt });
+
     logger.info(`Stream Started. Chunks count: ${uniqueChunks.length}`);
 
     if (!config.openrouterApiKey) {
@@ -252,14 +295,12 @@ export class RepositoryChatService {
     const llmStartTime = Date.now();
     let firstTokenLatency: number | null = null;
     let tokensCount = 0;
+    let accumulatedAnswer = "";
 
     try {
       const stream = await this.openai.chat.completions.create({
         model: config.openrouterChatModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        messages: chatMessages,
         temperature: 0.15,
         stream: true,
       });
@@ -277,12 +318,21 @@ export class RepositoryChatService {
             logger.info(`First Token Latency: ${firstTokenLatency}ms`);
           }
           tokensCount++;
+          accumulatedAnswer += token;
           onToken(token);
         }
       }
 
       const totalDuration = Date.now() - totalStartTime;
       logger.info(`Stream completed. Latency: ${totalDuration}ms, Tokens: ${tokensCount}`);
+
+      // Save messages on stream completions success
+      if (conversationId && !signal?.aborted) {
+        const convoService = new RepositoryConversationService(this.openai);
+        await convoService.addMessage(conversationId, "user", question);
+        await convoService.addMessage(conversationId, "assistant", accumulatedAnswer, sources);
+      }
+
       onEnd();
     } catch (err: unknown) {
       const error = err as Error;
