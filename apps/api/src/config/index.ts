@@ -22,6 +22,7 @@ export const config = {
   openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
   openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "",
   openrouterChatModel: process.env.OPENROUTER_CHAT_MODEL || "",
+  contactEmail: process.env.CONTACT_EMAIL || "gaurav.init13@gmail.com",
 }
 
 // Warn about missing database connections
