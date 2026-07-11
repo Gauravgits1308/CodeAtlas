@@ -1,68 +1,56 @@
-# Walkthrough - Milestone 4.8 Repository Conversation Memory
+# Walkthrough - Sprint 4.9 Explain Selected Code
 
-The CodeAtlas workspace now supports multi-turn conversations, persistence of chat sessions, and intelligent sliding window/summarization context compression.
+The repository viewer now enables interactive code selection, displaying a context-aware floating toolbar with options to Explain, Summarize, Find Bugs, Optimize, or audit Security. Detailed reviews open in a dedicated side panel next to the Code Viewer, leaving main chat history unaffected.
 
 ## Files Created / Modified
-- **Prisma Schema** ([apps/api/prisma/schema.prisma](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/prisma/schema.prisma)):
-  - Extended model layouts with `Conversation` and `Message` tables mapped to `User` and `Repository`.
-- **Repository Conversation Service** ([apps/api/src/services/repository-conversation.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-conversation.service.ts)):
-  - Implemented `createConversation`, `listConversations`, `renameConversation`, `deleteConversation`, and `addMessage` persistence routines.
-  - Implemented `getHistoryContext` using a sliding window strategy (last 6 messages) and automated summarization of older dialogue pairs using OpenRouter.
-- **Conversation Controller** ([apps/api/src/controllers/conversation.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/conversation.controller.ts)):
-  - Added endpoints list, rename, delete, and messages query methods.
-- **Conversation Router** ([apps/api/src/routes/conversation.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/conversation.routes.ts)):
-  - Mounted `/api/v1/conversations` paths.
-- **REST Index** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Registered conversation routes globally.
-- **Repository Chat Service** ([apps/api/src/services/repository-chat.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-chat.service.ts)):
-  - Adjusted RAG executions to load context history and append user/assistant messages to SQL database.
-- **Chat Controller** ([apps/api/src/controllers/chat.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/chat.controller.ts)):
-  - Enabled dynamic conversation creations and initial `conversationId` emissions over SSE stream.
-- **API Client Utility** ([apps/web/src/lib/api-client.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/lib/api-client.ts)):
-  - Expose PATCH helper mapping endpoint requests.
-- **Chat Workspace Page** ([apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
-  - Added History Sidebar Panel inside the AI column listing recent chats.
-  - Added New Chat, Continue Chat, Rename Conversation, Delete Conversation, and Clear Chat state features.
+- **Explain Controller** ([explain.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/explain.controller.ts)):
+  - Created prompt builders to parse target files, starting/ending line boundaries, and highlighted code snippets.
+  - Formatted generated report templates containing sections: Overview, Purpose, How It Works, Dependencies, Possible Improvements, Potential Bugs, and Best Practices.
+- **Explain Router** ([explain.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/explain.routes.ts)):
+  - Mounted explain-selection paths securely behind Clerk authenticator filters.
+- **REST Bootstrap Server** ([index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
+  - Registered `POST /api/v1/explain-selection` endpoints globally.
+- **Chat Workspace Page** ([page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
+  - Added mouse selection handlers over the code lines workspace view to retrieve absolute selection ranges.
+  - Developed the Floating Selection Toolbar popping up at mouse coordinates.
+  - Implemented the Selection Review side drawer overlaying next to the file viewer, with Copy actions, Open in Chat imports, and custom Follow-up inputs.
 
 ---
 
-## Multi-Turn Conversational Memory Pipeline
+## Interactive Code Selection Flow
 
 ```mermaid
 graph TD
-    UserQuery["User POST /api/v1/chat/stream { repositoryId, question, conversationId? }"]
-    FindOrCreate["Find or Create Conversation (UserId, RepoId)"]
-    MemoryLoad["Load last N messages (Sliding Window / Compression)"]
-    ModeDetect["Detect Mode (Explain, Review, etc.)"]
-    Search["RepositorySearchService.search(question + historyContext)"]
-    PromptBuild["Build Prompt (History + Context + Question)"]
-    LLM["Stream OpenRouter API completions"]
-    SaveMessage["Save User & Assistant messages to Message Database"]
-    Telemetry["Log Memory Tokens, Summarizations, latency"]
+    UserSelect["User highlights code block inside Viewer"]
+    MouseCoordinates["Resolve anchor/focus line elements & mouse coordinates"]
+    ShowToolbar["Show absolute Floating Toolbar: Explain, Summarize, Optimize, etc."]
+    ClickAction["User triggers action option"]
+    RequestBackend["POST /api/v1/explain-selection"]
+    OpenPanel["Open Docked Side Panel beside Code Viewer"]
+    StreamAnswer["Markdown format response display: Overview, Purpose, Improvements"]
+    OpenInChat["Open in Chat: Import selection code block + assistant response context"]
 
-    UserQuery --> FindOrCreate
-    FindOrCreate --> MemoryLoad
-    MemoryLoad --> ModeDetect
-    ModeDetect --> Search
-    Search --> PromptBuild
-    PromptBuild --> LLM
-    LLM --> SaveMessage
-    SaveMessage --> Telemetry
+    UserSelect --> MouseCoordinates
+    MouseCoordinates --> ShowToolbar
+    ShowToolbar --> ClickAction
+    ClickAction --> RequestBackend
+    RequestBackend --> OpenPanel
+    OpenPanel --> StreamAnswer
+    StreamAnswer --> OpenInChat
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Chat Persistence Sidebar**:
-   - Open `/dashboard/repository/REPO_ID/chat`.
-   - Click the "History" (clock icon) button in the assistant header.
-   - Verify that your recent conversations are listed, showing titles and last updated dates.
-2. **Verify Multi-Turn Context**:
-   - Start a new conversation and ask: `"What database configuration is mapped in this project?"`.
-   - Once answered, ask a follow-up: `"Where is it declared?"` (omitting database context).
-   - Confirm that the AI uses conversation memory history to correctly locate `schema.prisma` or `database.ts`.
-3. **Verify Renames & Deletes**:
-   - Hover over a conversation item in the history list.
-   - Click the pencil icon to rename, input a new title, and click "Save".
-   - Click the trash icon to delete a conversation thread and verify it gets removed.
+1. **Verify Text Selection listener**:
+   - Go to `/dashboard/repository/REPO_ID/chat`.
+   - Highlight any block of code inside the center Code Viewer panel.
+   - Verify that the floating options toolbar immediately appears above the highlighted text.
+2. **Verify Action review & Custom Prompt layouts**:
+   - Click `"✨ Explain"` on the floating toolbar.
+   - Confirm that the docked "Selection Review" panel slides open on the right of the Code Viewer.
+   - Verify that the analysis sections (Overview, Purpose, How It Works, Dependencies, Improvements, Bugs, Best Practices) are rendered.
+3. **Verify Side Panel features**:
+   - Verify follow-up questions inside the Side Panel input box.
+   - Click "Open in Chat" and verify that this specific code block and explanation are successfully imported into your primary Grounded Chat feed on the right column.

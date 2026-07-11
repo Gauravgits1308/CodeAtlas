@@ -148,6 +148,20 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [isEditingConvoId, setIsEditingConvoId] = React.useState<string | null>(null)
   const [editingTitle, setEditingTitle] = React.useState("")
 
+  // Floating Selection State
+  const [selectionText, setSelectionText] = React.useState("")
+  const [selectionRange, setSelectionRange] = React.useState<{ startLine: number; endLine: number } | null>(null)
+  const [toolbarPos, setToolbarPos] = React.useState<{ x: number; y: number } | null>(null)
+
+  // Explanation Side Panel State
+  const [showExplainPanel, setShowExplainPanel] = React.useState(false)
+  const [explainFilePath, setExplainFilePath] = React.useState("")
+  const [explainSelectedText, setExplainSelectedText] = React.useState("")
+  const [explainLines, setExplainLines] = React.useState<{ start: number; end: number }>({ start: 1, end: 1 })
+  const [explainAnswer, setExplainAnswer] = React.useState("")
+  const [isExplaining, setIsExplaining] = React.useState(false)
+  const [explainFollowUp, setExplainFollowUp] = React.useState("")
+
   // Explorer State
   const [filesTree, setFilesTree] = React.useState<FileTreeNode[]>([])
   const [searchFilter, setSearchFilter] = React.useState("")
@@ -490,6 +504,119 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  // Floating Selection actions mapping
+  const handleCodeAreaMouseUp = (e: React.MouseEvent) => {
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed) {
+      setToolbarPos(null)
+      return
+    }
+    const text = selection.toString().trim()
+    if (!text) {
+      setToolbarPos(null)
+      return
+    }
+
+    const anchorNode = selection.anchorNode?.parentElement
+    const focusNode = selection.focusNode?.parentElement
+    const getLineNum = (el: HTMLElement | null): number => {
+      if (!el) return 0
+      const idAttr = el.closest('[id^="line-"]')?.id
+      return idAttr ? parseInt(idAttr.replace("line-", ""), 10) : 0
+    }
+    const start = getLineNum(anchorNode as HTMLElement)
+    const end = getLineNum(focusNode as HTMLElement)
+
+    setSelectionText(text)
+    setSelectionRange({
+      startLine: Math.min(start, end) || 1,
+      endLine: Math.max(start, end) || 1,
+    })
+
+    setToolbarPos({ x: e.clientX, y: e.clientY - 45 })
+  }
+
+  const handleTriggerAction = async (actionType: string) => {
+    if (!selectedFilePath || !selectionText || !selectionRange) return
+    setToolbarPos(null)
+
+    setExplainFilePath(selectedFilePath)
+    setExplainSelectedText(selectionText)
+    setExplainLines({ start: selectionRange.startLine, end: selectionRange.endLine })
+    setExplainAnswer("")
+    setIsExplaining(true)
+    setShowExplainPanel(true)
+
+    try {
+      const res = await api.post<{ success: boolean; answer: string }>("/explain-selection", {
+        repositoryId,
+        filePath: selectedFilePath,
+        startLine: selectionRange.startLine,
+        endLine: selectionRange.endLine,
+        selectedCode: selectionText,
+        type: actionType,
+      })
+      if (res.success) {
+        setExplainAnswer(res.answer)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to analyze selection.")
+    } finally {
+      setIsExplaining(false)
+    }
+  }
+
+  const handleExplainFollowUp = async () => {
+    if (!explainFollowUp.trim() || isExplaining) return
+    const query = explainFollowUp.trim()
+    setExplainFollowUp("")
+    setIsExplaining(true)
+
+    try {
+      const res = await api.post<{ success: boolean; answer: string }>("/explain-selection", {
+        repositoryId,
+        filePath: explainFilePath,
+        startLine: explainLines.start,
+        endLine: explainLines.end,
+        selectedCode: explainSelectedText,
+        prompt: query,
+      })
+      if (res.success) {
+        setExplainAnswer((prev) => prev + `\n\n💬 **Follow-up: ${query}**\n\n` + res.answer)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to parse follow-up query.")
+    } finally {
+      setIsExplaining(false)
+    }
+  }
+
+  const handleOpenInChat = () => {
+    const text = 
+      `I have highlighted this code inside \`${explainFilePath}\` (lines ${explainLines.start}-${explainLines.end}):\n` +
+      `\`\`\`\n${explainSelectedText}\n\`\`\`\n\n` +
+      `Here was your review:\n\n${explainAnswer}`
+
+    const userMsg: Message = {
+      id: `msg-user-imported-${Date.now()}`,
+      role: "user",
+      content: `Show details of selection inside \`${explainFilePath}\``,
+    }
+    const assistantMsg: Message = {
+      id: `msg-assistant-imported-${Date.now()}`,
+      role: "assistant",
+      content: text,
+      sources: [{ filePath: explainFilePath, startLine: explainLines.start, endLine: explainLines.end, similarity: 1 }],
+    }
+
+    setMessages((prev) => [...prev, userMsg, assistantMsg])
+    setShowExplainPanel(false)
+    setActiveTab("chat")
+    toast.success("Selection review successfully imported into active chat thread.")
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -636,7 +763,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       </aside>
 
       {/* COLUMN 2: CENTER PANEL (Code Viewer - Independently scrollable) */}
-      <main className={`flex-1 flex flex-col min-w-0 bg-[#080B12] transition-all duration-200 border-r border-border/20 ${
+      <main className={`flex-1 flex flex-row min-w-0 bg-[#080B12] transition-all duration-200 border-r border-border/20 ${
         activeTab === "code" ? "flex" : "hidden md:flex"
       }`}>
         {selectedFilePath ? (
@@ -669,7 +796,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 select-text">
+            <div 
+              className="flex-1 overflow-auto p-4 select-text"
+              onMouseUp={handleCodeAreaMouseUp}
+            >
               {isLoadingFile ? (
                 <div className="flex flex-col items-center justify-center h-full gap-2 font-mono text-xs text-muted-foreground">
                   <Loader2 className="size-6 text-primary animate-spin" />
@@ -721,6 +851,89 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <div className="text-xs font-bold text-foreground/40">No File Selected</div>
             <div className="text-[10px] max-w-xs leading-relaxed">
               Open any file from the repository sidebar or click an AI response citation to view content.
+            </div>
+          </div>
+        )}
+
+        {/* Floating Selection explanation side panel inside Code Viewer */}
+        {showExplainPanel && (
+          <div className="w-80 lg:w-[350px] border-l border-border/20 bg-[#0E1220] flex flex-col min-h-0 select-text shrink-0 shadow-2xl relative z-20">
+            <div className="p-3.5 bg-[#161D30]/60 border-b border-border/15 flex items-center justify-between shrink-0 font-mono text-xs select-none">
+              <span className="font-extrabold text-foreground tracking-wider uppercase">Selection Review</span>
+              <button 
+                onClick={() => setShowExplainPanel(false)} 
+                className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-bold font-mono"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin select-text">
+              <div className="bg-[#0A0D14]/80 p-2.5 rounded-xl border border-border/10 select-text">
+                <div className="font-mono text-[9px] text-muted-foreground uppercase font-bold tracking-wider mb-1 select-none">
+                  {explainFilePath.split("/").pop()} ({explainLines.start}-{explainLines.end})
+                </div>
+                <pre className="font-mono text-[9px] text-foreground/80 overflow-x-auto max-h-24 truncate whitespace-pre-wrap select-text">
+                  {explainSelectedText}
+                </pre>
+              </div>
+
+              <div className="text-xs leading-relaxed select-text">
+                {isExplaining && !explainAnswer ? (
+                  <div className="flex items-center gap-2 text-primary font-mono text-[10px] select-none py-12 justify-center">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Analyzing selection...</span>
+                  </div>
+                ) : (
+                  <Markdown content={explainAnswer} />
+                )}
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-border/10 bg-[#0F1424]/90 space-y-2 shrink-0 select-none">
+              <div className="relative bg-[#111622] border border-border/25 rounded-xl p-1.5 flex items-end gap-2">
+                <textarea
+                  rows={1}
+                  value={explainFollowUp}
+                  onChange={(e) => setExplainFollowUp(e.target.value)}
+                  placeholder="Ask follow-up..."
+                  className="flex-1 bg-transparent border-none text-[10px] text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-1.5 px-2 max-h-[100px] leading-relaxed font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      handleExplainFollowUp()
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleExplainFollowUp}
+                  disabled={isExplaining || !explainFollowUp.trim()}
+                  className="bg-primary hover:bg-primary/95 text-white h-7 px-3 text-[10px] rounded-lg shrink-0 cursor-pointer"
+                >
+                  Ask
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button
+                  onClick={() => {
+                    navigator.clipboard.writeText(explainAnswer)
+                    toast.success("Copied to clipboard.")
+                  }}
+                  disabled={!explainAnswer}
+                  variant="outline"
+                  className="h-7 text-[9px] font-mono hover:bg-[#1A233C]/20 border-border/15 shrink-0 cursor-pointer"
+                >
+                  Copy
+                </Button>
+                <Button
+                  onClick={handleOpenInChat}
+                  disabled={!explainAnswer}
+                  className="h-7 text-[9px] font-mono bg-primary hover:bg-primary/95 shrink-0 cursor-pointer"
+                >
+                  Open in Chat
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -1004,6 +1217,45 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
       </section>
+
+      {/* Floating Selection Toolbar */}
+      {toolbarPos && (
+        <div 
+          className="fixed bg-[#111622]/95 border border-border/30 px-2 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xl z-50 backdrop-blur-md font-mono text-[9px] select-none"
+          style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px`, transform: "translate(-50%, -100%)" }}
+        >
+          <button
+            onClick={() => handleTriggerAction("Explain")}
+            className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary hover:text-white rounded-lg cursor-pointer transition-all flex items-center gap-1 font-bold"
+          >
+            ✨ Explain
+          </button>
+          <button
+            onClick={() => handleTriggerAction("Summarize")}
+            className="px-2 py-1 hover:bg-[#1A233C]/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer transition-all flex items-center gap-1"
+          >
+            📝 Summarize
+          </button>
+          <button
+            onClick={() => handleTriggerAction("Find Bugs")}
+            className="px-2 py-1 hover:bg-[#1A233C]/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer transition-all flex items-center gap-1"
+          >
+            🐛 Find Bugs
+          </button>
+          <button
+            onClick={() => handleTriggerAction("Optimize")}
+            className="px-2 py-1 hover:bg-[#1A233C]/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer transition-all flex items-center gap-1"
+          >
+            ⚡ Optimize
+          </button>
+          <button
+            onClick={() => handleTriggerAction("Security Review")}
+            className="px-2 py-1 hover:bg-[#1A233C]/20 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer transition-all flex items-center gap-1"
+          >
+            🔐 Security
+          </button>
+        </div>
+      )}
 
       {/* Floating responsive tab bar selector for mobile screen toggles */}
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-[#111622] border border-border/30 px-3 py-2 rounded-2xl flex items-center gap-4 z-40 md:hidden shadow-2xl backdrop-blur-md">
