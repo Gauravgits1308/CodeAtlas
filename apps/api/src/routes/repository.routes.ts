@@ -26,4 +26,10 @@ router.post("/:id/analyze", requireAuth, repositoryController.analyzeRepository)
 // POST /api/v1/repositories/:id/process
 router.post("/:id/process", requireAuth, repositoryController.processRepository);
 
+// GET /api/v1/repositories/:id/files
+router.get("/:id/files", requireAuth, repositoryController.getRepositoryFiles);
+
+// GET /api/v1/repositories/:id/file
+router.get("/:id/file", requireAuth, repositoryController.getRepositoryFileContent);
+
 export default router;

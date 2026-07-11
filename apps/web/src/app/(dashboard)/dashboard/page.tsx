@@ -16,8 +16,10 @@ import {
   Loader2,
   XCircle,
   Star,
-  GitFork
+  GitFork,
+  MessageSquare
 } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
 import { Container } from "@/components/common/Container"
@@ -481,6 +483,17 @@ export default function DashboardPage() {
 
                   {/* Right Actions */}
                   <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+                    <Link
+                      href={`/dashboard/repository/${repo.id}/chat`}
+                      className={`inline-flex items-center justify-center h-9 px-3.5 rounded-lg text-xs font-semibold border transition-all ${
+                        (repo.embeddingsCount || 0) > 0
+                          ? "bg-primary border-primary text-white hover:bg-primary/90 cursor-pointer"
+                          : "border-border/30 text-muted-foreground bg-muted/10 cursor-not-allowed pointer-events-none opacity-50"
+                      }`}
+                    >
+                      <MessageSquare className="size-3.5 mr-1.5" />
+                      <span>Chat</span>
+                    </Link>
                     <a
                       href={repo.url}
                       target="_blank"

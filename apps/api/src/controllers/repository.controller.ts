@@ -1,5 +1,7 @@
 /// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from "express";
+import * as fs from "fs";
+import * as path from "path";
 import { RepositoryService, ImportRepositoryPayload } from "../services/repository.service";
 import { RepositoryJobService } from "../services/repository-job.service";
 import { asyncHandler, AppError } from "../utils/errors";
@@ -188,5 +190,144 @@ export class RepositoryController {
       jobId,
       status: "QUEUED",
     });
+  });
+
+  getRepositoryFiles = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!dbUser) {
+      throw new AppError("User not synchronized in local database.", 401);
+    }
+
+    const repository = await prisma.repository.findFirst({
+      where: {
+        id,
+        userId: dbUser.id,
+      },
+    });
+
+    if (!repository) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    const storagePath = path.join(__dirname, "../../../../storage/repositories", id);
+    if (!fs.existsSync(storagePath)) {
+      throw new AppError("Repository files not found on disk. Please trigger sync.", 404);
+    }
+
+    const filesTree = buildFileTree(storagePath, storagePath);
+
+    res.status(200).json({
+      success: true,
+      files: filesTree,
+    });
+  });
+
+  getRepositoryFileContent = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+    const filePathQuery = req.query.path as string;
+
+    if (!filePathQuery || typeof filePathQuery !== "string" || !filePathQuery.trim()) {
+      throw new AppError("File path query parameter is required.", 400);
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!dbUser) {
+      throw new AppError("User not synchronized in local database.", 401);
+    }
+
+    const repository = await prisma.repository.findFirst({
+      where: {
+        id,
+        userId: dbUser.id,
+      },
+    });
+
+    if (!repository) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    const storagePath = path.join(__dirname, "../../../../storage/repositories", id);
+    const targetFilePath = path.join(storagePath, filePathQuery);
+
+    const relative = path.relative(storagePath, targetFilePath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new AppError("Access denied: Invalid file path.", 403);
+    }
+
+    if (!fs.existsSync(targetFilePath)) {
+      throw new AppError("Requested file not found in repository.", 404);
+    }
+
+    const stat = fs.statSync(targetFilePath);
+    if (stat.isDirectory()) {
+      throw new AppError("Requested path is a directory, not a file.", 400);
+    }
+
+    if (stat.size > 1500000) {
+      throw new AppError("File is too large to visualize.", 400);
+    }
+
+    const content = fs.readFileSync(targetFilePath, "utf-8");
+
+    res.status(200).json({
+      success: true,
+      content,
+    });
+  });
+}
+
+// Recursive helper to build repository file tree ignoring non-relevant nodes
+interface FileTreeNode {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  children?: FileTreeNode[];
+}
+
+function buildFileTree(dirPath: string, rootDir: string): FileTreeNode[] {
+  const items = fs.readdirSync(dirPath);
+  const nodes: FileTreeNode[] = [];
+
+  const ignoreFolders = [".git", "node_modules", "dist", "build", ".next", ".cache", "tmp", "coverage"];
+  const ignoreFiles = [".DS_Store", "thumbs.db"];
+
+  for (const item of items) {
+    if (ignoreFolders.includes(item) || ignoreFiles.includes(item)) {
+      continue;
+    }
+
+    const fullPath = path.join(dirPath, item);
+    const relativePath = path.relative(rootDir, fullPath);
+    const stat = fs.statSync(fullPath);
+
+    if (stat.isDirectory()) {
+      nodes.push({
+        name: item,
+        path: relativePath,
+        type: "directory",
+        children: buildFileTree(fullPath, rootDir),
+      });
+    } else {
+      nodes.push({
+        name: item,
+        path: relativePath,
+        type: "file",
+      });
+    }
+  }
+
+  return nodes.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === "directory" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
   });
 }

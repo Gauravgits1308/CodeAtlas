@@ -1,70 +1,49 @@
-# Walkthrough - Milestone 4.2 AI Repository Chat (RAG)
+# Walkthrough - Milestone 4.4 Repository Explorer & Clickable Source Viewer
 
-Retrieval-Augmented Generation (RAG) is now fully integrated inside the backend codebase under route `POST /api/v1/chat`.
+The CodeAtlas platform has been upgraded to a fully integrated repository code explorer and RAG workspace. 
 
 ## Files Created / Modified
-- **Repository Chat Service** ([apps/api/src/services/repository-chat.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-chat.service.ts)):
-  - Implements the complete chat logical pipeline.
-  - Generates query vectors, fetches top-ranked matching chunks (via `RepositorySearchService`), builds grounded system prompts, queries OpenRouter's completion APIs, and maps sources citation.
-  - Implemented custom fallback mapping normalization to protect against context hallucinations.
-- **Chat Controller** ([apps/api/src/controllers/chat.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/chat.controller.ts)):
-  - Performs schema validation rejecting missing repositories, empty question prompts, or questions longer than 3000 characters.
-- **Chat Routes** ([apps/api/src/routes/chat.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/chat.routes.ts)):
-  - Exposes `POST /` mapped to `ChatController.chat` secured behind standard Clerk authentication layers.
-- **App Main Bootstrap** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Registered `/api/v1/chat` route endpoints.
+- **Repository Controller** ([apps/api/src/controllers/repository.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/repository.controller.ts)):
+  - Added `getRepositoryFiles` returning a sorted files/directories tree (ignoring `.git`, `node_modules`, etc.).
+  - Added `getRepositoryFileContent` to lazy-load file content safely (implementing directory traversal prevention checks).
+- **Repository Routes** ([apps/api/src/routes/repository.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/repository.routes.ts)):
+  - Mounted `/api/v1/repositories/:id/files` and `/api/v1/repositories/:id/file` endpoints.
+- **Custom Markdown** ([apps/web/src/components/Markdown.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/Markdown.tsx)):
+  - Removed unused linter properties/warnings (`_lang`, `inList`).
+- **Chat Workspace Page** ([apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
+  - Replaced the interface with an IDE-style split panel: Left (File tree explorer), Center (Chat window), Right (File code viewer).
+  - Wired source citations to trigger a jump scrolling action: fetches target file content, scrolls to line range, and highlights lines in a yellow visual box.
+  - Implemented responsive tab bars for compact mobile screens.
+  - Resolved purity checks issues.
 
 ---
 
-## AI Chat (RAG) Architecture
+## Code Viewer Scrolling & Highlighting Flow
 
 ```mermaid
 graph TD
-    Client["Client POST Request /api/v1/chat"]
-    Controller["ChatController.chat()"]
-    SearchService["RepositorySearchService.search()"]
-    Embed["EmbeddingService.generateEmbedding()"]
-    pgvector["pgvector Cosine Distance Search"]
-    ChatService["RepositoryChatService.chat()"]
-    OpenRouter["OpenRouter completions.create()"]
-    Response["Structured Grounded Answer + Source Citations"]
+    User["User clicks a referenced source citation"]
+    Select["Set selectedFilePath state"]
+    LazyLoad["Lazy-load target file content (if not cached)"]
+    APIFile["GET /api/v1/repositories/:id/file?path=..."]
+    Highlight["Highlight line range in Right panel (bg-amber-500/10)"]
+    Scroll["Smooth scroll line into center viewport"]
 
-    Client --> Controller
-    Controller -- "1. Validation" --> ChatService
-    ChatService --> SearchService
-    SearchService --> Embed
-    Embed --> pgvector
-    pgvector -- "Top 10 chunks" --> SearchService
-    SearchService -- "Ranked chunks context" --> ChatService
-    ChatService -- "Prompt formatting" --> OpenRouter
-    OpenRouter -- "200 OK LLM Response" --> ChatService
-    ChatService -- "Hallucination fallback validation" --> Response
-    Response --> Client
+    User --> Select
+    Select --> LazyLoad
+    LazyLoad -- "Fetch content" --> APIFile
+    APIFile -- "Cache in state" --> Highlight
+    Highlight --> Scroll
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Endpoint Response structure**:
-   - Issue a chat query request against the Express endpoint:
-     ```bash
-     curl -X POST http://localhost:5001/api/v1/chat \
-       -H "Content-Type: application/json" \
-       -d '{"repositoryId": "REPO_UUID", "question": "How is authentication implemented?"}'
-     ```
-   - Verify that the response includes grounded text matching citation lists:
-     ```json
-     {
-       "success": true,
-       "answer": "Authentication is implemented using Clerk inside index.ts...",
-       "sources": [
-         {
-           "filePath": "apps/api/src/index.ts",
-           "startLine": 1,
-           "endLine": 35,
-           "similarity": 0.895
-         }
-       ]
-     }
-     ```
+1. **Verify File Explorer Tree**:
+   - Access `/dashboard/repository/REPO_ID/chat` on desktop.
+   - Confirm that the Left panel displays folders and files recursively.
+   - Type in the explorer search box to verify lists filter correctly.
+2. **Verify Clickable Citations & Highlighting**:
+   - Click a citation button (e.g. `index.ts (1-35)`) under an assistant answer.
+   - Confirm that the right code pane opens the file, highlights the selected lines, and scrolls smoothly to center the code snippet.
