@@ -106,37 +106,27 @@ export default function DashboardPage() {
     setIsRepoModalOpen(true)
   }
 
-  const handleSyncRepo = (id: string, name: string) => {
-    if (syncingId) return
+  const handleSyncRepo = async (id: string, name: string) => {
+    if (syncingId === id) return
     setSyncingId(id)
-    toast.promise(
-      new Promise((resolve) => setTimeout(resolve, 2500)),
-      {
-        loading: `Analyzing & indexing ${name}...`,
-        success: () => {
-          setRepositories((prev) =>
-            prev.map((repo) =>
-              repo.id === id
-                ? {
-                    ...repo,
-                    status: "active",
-                    lastSyncedAt: new Date().toISOString(),
-                    metrics: repo.metrics
-                      ? {
-                          ...repo.metrics,
-                          linesCount: repo.metrics.linesCount + Math.floor(Math.random() * 500),
-                        }
-                      : undefined,
-                  }
-                : repo
-            )
-          )
-          setSyncingId(null)
-          return `${name} analysis updated successfully!`
-        },
-        error: "Indexing failed.",
+
+    try {
+      const response = await api.post<{ success: boolean; jobId: string; status: string }>(
+        `/v1/repositories/${id}/process`
+      )
+      if (response.success) {
+        toast.success("Repository queued for processing.")
+        // Refresh local listings status
+        await fetchRepos()
+      } else {
+        toast.error("Failed to queue repository for processing.")
       }
-    )
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || `An error occurred while queuing ${name}.`)
+    } finally {
+      setSyncingId(null)
+    }
   }
 
   return (
