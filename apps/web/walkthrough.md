@@ -1,18 +1,33 @@
-# Walkthrough - pgvector Database Column Debug Fix
+# Walkthrough - Sprint 4.9 Explain Selection AI Modes Refactoring
 
-Resolved the SQL query issue `column e.embedding does not exist` occurring during repository similarity searches for health and assistant queries.
+Refactored the code Selection Review panel to route and trigger specialized AI analysis modes for each toolbar action.
 
-## Files Modified
-- **Prisma Schema** ([schema.prisma](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/prisma/schema.prisma)):
-  - Added the `embedding` column definition back as `Unsupported("vector")?` inside the `ChunkEmbedding` model.
-  - This ensures that table synchronization pushes do not drop the pgvector column and that Prisma respects its structure on database synchronization.
-- **Database Schema Sync**:
-  - Run `npx prisma db push` to synchronize table models and re-create the missing `embedding` column as `vector` type.
+## Files Created / Modified
+- **Explain Selection Service** ([explain-selection.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/explain-selection.service.ts)):
+  - Extended the analysis logic to route incoming modes (`EXPLAIN`, `SUMMARIZE`, `BUG_REVIEW`, `OPTIMIZE`, `SECURITY`) to specialized system prompts enforcing target format headings.
+- **Explain Selection Controller** ([explain-selection.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/explain-selection.controller.ts)):
+  - Validates and sanitizes the `mode` parameter received from client payloads.
+- **Chat Workspace Page** ([page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
+  - Updated selection toolbar buttons click triggers to map to target mode strings.
+  - Linked panel headings to display custom labels representing the active evaluation context (e.g. *Code Explanation*, *Code Summary*, *Bug Review*, *Performance Review*, *Security Audit*).
+
+---
+
+## Analysis Modes Prompt Routing
+
+| Mode | Input Toolbar Button | Header Heading | Target Analysis Layout & Headers |
+|---|---|---|---|
+| `EXPLAIN` | `✨ Explain` | Code Explanation | `📌 Purpose`, `⚙️ How It Works`, `🔗 Dependencies`, `💡 Why It Exists`, `📖 Example Flow` |
+| `SUMMARIZE` | `📝 Summarize` | Code Summary | `Overview`, `Responsibilities`, `Inputs`, `Outputs`, `Key Logic` |
+| `BUG_REVIEW` | `🐛 Find Bugs` | Bug Review | `Critical Issues`, `Medium Issues`, `Low Issues`, `Suggested Fixes` |
+| `OPTIMIZE` | `⚡ Optimize` | Performance Review | `Current Implementation`, `Optimization Opportunities`, `Refactored Example`, `Estimated Benefit` |
+| `SECURITY` | `🔐 Security` | Security Audit | `Risk Level`, `Findings`, `Recommendations`, `Example Fixes` |
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify pgvector similarity queries**:
-   - Run similarity vector searches or query Repository Health reviews.
-   - Verify that queries join `ChunkEmbedding` and resolve `e.embedding` smoothly without throwing SQL column not found errors.
+1. **Verify Mode Prompts**:
+   - Open Repository Explorer, highlight a code segment, and click the toolbar actions.
+   - Confirm that the side drawer panel header updates dynamically.
+   - Confirm that the response sections match the required markdown formats.

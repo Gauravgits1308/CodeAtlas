@@ -191,6 +191,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [explainAnswer, setExplainAnswer] = React.useState("")
   const [isExplaining, setIsExplaining] = React.useState(false)
   const [explainFollowUp, setExplainFollowUp] = React.useState("")
+  const [explainMode, setExplainMode] = React.useState<"EXPLAIN" | "SUMMARIZE" | "BUG_REVIEW" | "OPTIMIZE" | "SECURITY">("EXPLAIN")
 
   // Health Dashboard State
   const [healthReport, setHealthReport] = React.useState<HealthReport | null>(null)
@@ -621,6 +622,13 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     if (!selectedFilePath || !selectionText || !selectionRange) return
     setToolbarPos(null)
 
+    let targetMode: "EXPLAIN" | "SUMMARIZE" | "BUG_REVIEW" | "OPTIMIZE" | "SECURITY" = "EXPLAIN"
+    if (actionType === "Summarize") targetMode = "SUMMARIZE"
+    else if (actionType === "Find Bugs") targetMode = "BUG_REVIEW"
+    else if (actionType === "Optimize") targetMode = "OPTIMIZE"
+    else if (actionType === "Security Review") targetMode = "SECURITY"
+
+    setExplainMode(targetMode)
     setExplainFilePath(selectedFilePath)
     setExplainSelectedText(selectionText)
     setExplainLines({ start: selectionRange.startLine, end: selectionRange.endLine })
@@ -635,7 +643,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         startLine: selectionRange.startLine,
         endLine: selectionRange.endLine,
         selectedCode: selectionText,
-        type: actionType,
+        mode: targetMode,
       })
       if (res.success) {
         setExplainAnswer(res.answer)
@@ -661,6 +669,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         startLine: explainLines.start,
         endLine: explainLines.end,
         selectedCode: explainSelectedText,
+        mode: explainMode,
         prompt: query,
       })
       if (res.success) {
@@ -1175,7 +1184,13 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             {showExplainPanel && (
               <div className="w-80 lg:w-[350px] border-l border-border/20 bg-[#0E1220] flex flex-col min-h-0 select-text shrink-0 shadow-2xl relative z-20">
                 <div className="p-3.5 bg-[#161D30]/60 border-b border-border/15 flex items-center justify-between shrink-0 font-mono text-xs select-none">
-                  <span className="font-extrabold text-foreground tracking-wider uppercase">Selection Review</span>
+                  <span className="font-extrabold text-foreground tracking-wider uppercase">
+                    {explainMode === "SUMMARIZE" && "Code Summary"}
+                    {explainMode === "BUG_REVIEW" && "Bug Review"}
+                    {explainMode === "OPTIMIZE" && "Performance Review"}
+                    {explainMode === "SECURITY" && "Security Audit"}
+                    {explainMode === "EXPLAIN" && "Code Explanation"}
+                  </span>
                   <button 
                     onClick={() => setShowExplainPanel(false)} 
                     className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-bold font-mono"

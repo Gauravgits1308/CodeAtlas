@@ -15,7 +15,7 @@ export class ExplainSelectionController {
    * Endpoint handler to explain code selection block.
    */
   explainSelection = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const { repositoryId, filePath, startLine, endLine, selectedCode, question, prompt } = req.body;
+    const { repositoryId, filePath, startLine, endLine, selectedCode, question, prompt, mode } = req.body;
 
     // Validate inputs
     if (!repositoryId || typeof repositoryId !== "string" || !repositoryId.trim()) {
@@ -31,7 +31,14 @@ export class ExplainSelectionController {
     // Support both 'question' and 'prompt' keys to match frontend payload calls
     const targetQuestion = question || prompt || "";
 
-    logger.info(`ExplainSelectionController: Repo=${repositoryId}, File=${filePath}`);
+    // Resolve and validate analysis mode
+    let targetMode: "EXPLAIN" | "SUMMARIZE" | "BUG_REVIEW" | "OPTIMIZE" | "SECURITY" = "EXPLAIN";
+    const requestMode = (mode || "").toString().toUpperCase();
+    if (["EXPLAIN", "SUMMARIZE", "BUG_REVIEW", "OPTIMIZE", "SECURITY"].includes(requestMode)) {
+      targetMode = requestMode as "EXPLAIN" | "SUMMARIZE" | "BUG_REVIEW" | "OPTIMIZE" | "SECURITY";
+    }
+
+    logger.info(`ExplainSelectionController: Repo=${repositoryId}, File=${filePath}, mode=${targetMode}`);
 
     const result = await this.explainService.explain({
       repositoryId: repositoryId.trim(),
@@ -39,6 +46,7 @@ export class ExplainSelectionController {
       startLine: Number(startLine) || 1,
       endLine: Number(endLine) || 1,
       selectedCode: selectedCode.trim(),
+      mode: targetMode,
       question: typeof targetQuestion === "string" ? targetQuestion.trim() : undefined,
     });
 
