@@ -165,6 +165,133 @@ export class RepositoryChatService {
   }
 
   /**
+   * Runs similarity retrieval and streams OpenRouter tokens to the client.
+   *
+   * @param repositoryId Target repository ID.
+   * @param question The natural language question.
+   * @param onSources Emit function for unique citations.
+   * @param onToken Emit function for generated tokens.
+   * @param onEnd Emit function when done.
+   * @param signal AbortSignal to close connection.
+   */
+  async chatStream(
+    repositoryId: string,
+    question: string,
+    onSources: (sources: ChatSource[]) => void,
+    onToken: (token: string) => void,
+    onEnd: () => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const totalStartTime = Date.now();
+    logger.info(`Stream request received for repo ID: ${repositoryId}, question: "${question}"`);
+
+    // 1. Verify repository exists
+    const repo = await this.repositoryRepository.findById(repositoryId);
+    if (!repo) {
+      throw new AppError("Repository not found.", 404);
+    }
+
+    // 2. Verify repository is indexed
+    if (repo.status !== "COMPLETED") {
+      throw new AppError("Repository codebase is not fully indexed yet.", 400);
+    }
+
+    // 3. Detect Mode
+    const mode = this.detectMode(question);
+    logger.info(`Stream Detected Mode: ${mode}`);
+
+    // 4. Query similar code chunks (Top 10 chunks)
+    const chunks = await this.repositorySearchService.search(repositoryId, question, 10);
+    logger.info(`Stream retrieved ${chunks.length} chunks from database`);
+
+    // 5. Deduplicate and sort chunks
+    const seen = new Set<string>();
+    const uniqueChunks = chunks
+      .filter((c) => {
+        const key = `${c.filePath}-${c.startLine}-${c.endLine}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => b.similarity - a.similarity);
+
+    const sources: ChatSource[] = uniqueChunks.map((chunk) => ({
+      filePath: chunk.filePath,
+      startLine: chunk.startLine,
+      endLine: chunk.endLine,
+      similarity: chunk.similarity,
+    }));
+
+    // Send sources metadata event immediately
+    onSources(sources);
+
+    // 6. Format context text
+    let contextText = `Repository: ${repo.name}\n\n`;
+    for (const chunk of uniqueChunks) {
+      contextText += `File: ${chunk.filePath}\n`;
+      contextText += `Line Range: ${chunk.startLine} - ${chunk.endLine}\n`;
+      contextText += `Code:\n\`\`\`\n${chunk.content}\n\`\`\`\n\n`;
+      contextText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    }
+
+    // 7. Get mode-specific system prompt
+    const systemPrompt = this.getSystemPromptForMode(mode);
+    const userPrompt = `${contextText}Question: ${question}`;
+
+    logger.info(`Stream Started. Chunks count: ${uniqueChunks.length}`);
+
+    if (!config.openrouterApiKey) {
+      throw new AppError("OpenRouter API key is missing. Please configure OPENROUTER_API_KEY.", 500);
+    }
+
+    if (!config.openrouterChatModel) {
+      throw new AppError("OPENROUTER_CHAT_MODEL is not configured.", 500);
+    }
+
+    // 8. Call OpenRouter streaming completions
+    const llmStartTime = Date.now();
+    let firstTokenLatency: number | null = null;
+    let tokensCount = 0;
+
+    try {
+      const stream = await this.openai.chat.completions.create({
+        model: config.openrouterChatModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.15,
+        stream: true,
+      });
+
+      for await (const chunk of stream) {
+        if (signal?.aborted) {
+          logger.info("Stream cancelled / aborted by signal");
+          break;
+        }
+
+        const token = chunk.choices[0]?.delta?.content || "";
+        if (token) {
+          if (firstTokenLatency === null) {
+            firstTokenLatency = Date.now() - llmStartTime;
+            logger.info(`First Token Latency: ${firstTokenLatency}ms`);
+          }
+          tokensCount++;
+          onToken(token);
+        }
+      }
+
+      const totalDuration = Date.now() - totalStartTime;
+      logger.info(`Stream completed. Latency: ${totalDuration}ms, Tokens: ${tokensCount}`);
+      onEnd();
+    } catch (err: unknown) {
+      const error = err as Error;
+      logger.error(`OpenRouter Chat API streaming completions failed: ${error.message}`, error);
+      throw new AppError(`OpenRouter Chat completions stream failure: ${error.message}`, 500);
+    }
+  }
+
+  /**
    * Route user queries based on context matching.
    */
   private detectMode(question: string): string {

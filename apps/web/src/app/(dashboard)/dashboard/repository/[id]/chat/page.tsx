@@ -129,6 +129,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [question, setQuestion] = React.useState("")
   const [isLoadingRepo, setIsLoadingRepo] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [abortController, setAbortController] = React.useState<AbortController | null>(null)
 
   // Explorer State
   const [filesTree, setFilesTree] = React.useState<FileTreeNode[]>([])
@@ -277,11 +278,23 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || question).trim()
-    if (!text || isSubmitting) return
+    if (!text || (isSubmitting && !textToSend)) return
+
+    if (isSubmitting) {
+      if (abortController) {
+        abortController.abort()
+        setAbortController(null)
+      }
+      setIsSubmitting(false)
+      return
+    }
 
     if (!textToSend) {
       setQuestion("")
     }
+
+    const controller = new AbortController()
+    setAbortController(controller)
 
     const messageIndex = messages.length
     const userMessage: Message = {
@@ -290,52 +303,82 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       content: text,
     }
 
-    const thinkingMessageId = `msg-assistant-${messageIndex}`
+    const assistantMessageId = `msg-assistant-${messageIndex}`
     const thinkingMessage: Message = {
-      id: thinkingMessageId,
+      id: assistantMessageId,
       role: "assistant",
-      content: "Thinking...",
+      content: "",
     }
 
     setMessages((prev) => [...prev, userMessage, thinkingMessage])
     setIsSubmitting(true)
-
-    // Scroll chat into view tab
     setActiveTab("chat")
 
-    try {
-      const response = await api.post<{
-        success: boolean
-        answer: string
-        sources: { filePath: string; startLine: number; endLine: number; similarity: number }[]
-      }>("/v1/chat", {
-        repositoryId,
-        question: text,
-      })
+    let accumulatedText = ""
+    let hasReceivedToken = false
 
-      if (response.success) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === thinkingMessageId
-              ? {
-                  id: thinkingMessageId,
-                  role: "assistant",
-                  content: response.answer,
-                  sources: response.sources,
+    try {
+      await api.stream(
+        "/v1/chat/stream",
+        { repositoryId, question: text },
+        (chunk) => {
+          const lines = chunk.split("\n")
+          let currentEvent = ""
+
+          for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (trimmedLine.startsWith("event: ")) {
+              currentEvent = trimmedLine.replace("event: ", "").trim()
+            } else if (trimmedLine.startsWith("data: ")) {
+              const dataStr = trimmedLine.replace("data: ", "").trim()
+              if (dataStr === "[DONE]") {
+                break
+              }
+              try {
+                const parsed = JSON.parse(dataStr)
+                if (currentEvent === "sources") {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, sources: parsed }
+                        : msg
+                    )
+                  )
+                } else if (currentEvent === "token") {
+                  hasReceivedToken = true
+                  accumulatedText += parsed.token
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, content: accumulatedText }
+                        : msg
+                    )
+                  )
                 }
-              : msg
-          )
-        )
-      } else {
-        toast.error("Failed to generate response.")
-        setMessages((prev) => prev.filter((m) => m.id !== thinkingMessageId))
-      }
+              } catch {
+                // Ignore parse errors
+              }
+            }
+          }
+        },
+        controller.signal
+      )
     } catch (err: unknown) {
       const error = err as Error
-      toast.error(error.message || "A network or server error occurred.")
-      setMessages((prev) => prev.filter((m) => m.id !== thinkingMessageId))
+      if (error.name === "AbortError" || controller.signal.aborted) {
+        toast.info("Generation cancelled.")
+        if (!hasReceivedToken) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
+        }
+      } else {
+        toast.error(error.message || "A network or server error occurred.")
+        if (!hasReceivedToken) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
+        }
+      }
     } finally {
       setIsSubmitting(false)
+      setAbortController(null)
     }
   }
 
@@ -648,7 +691,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             <div className="space-y-6">
               {messages.map((message) => {
                 const isAssistant = message.role === "assistant"
-                const isThinking = isAssistant && message.content === "Thinking..."
+                const isThinking = isAssistant && message.content === ""
 
                 return (
                   <div key={message.id} className={`flex gap-3 ${isAssistant ? "justify-start" : "justify-end"}`}>
@@ -667,7 +710,12 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                         {isThinking ? (
                           <ProgressiveLoader />
                         ) : isAssistant ? (
-                          <Markdown content={message.content} />
+                          <div className="relative">
+                            <Markdown content={message.content} />
+                            {isSubmitting && message.id === messages[messages.length - 1]?.id && (
+                              <span className="inline-block w-1 h-3.5 bg-primary/80 ml-1 animate-pulse" />
+                            )}
+                          </div>
                         ) : (
                           <p className="whitespace-pre-wrap leading-relaxed font-sans">{message.content}</p>
                         )}
@@ -721,16 +769,19 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isSubmitting}
               placeholder="Ask workspace queries..."
               className="flex-1 bg-transparent border-none text-xs text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-2 px-3 min-h-[36px] max-h-[160px] leading-relaxed"
             />
             <Button
               onClick={() => handleSend()}
-              disabled={isSubmitting || !question.trim()}
+              disabled={!isSubmitting && !question.trim()}
               className="bg-primary hover:bg-primary/95 text-white size-8.5 rounded-lg shrink-0 cursor-pointer p-0 disabled:opacity-50"
             >
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {isSubmitting ? (
+                <div className="size-3 bg-white rounded-xs animate-pulse" />
+              ) : (
+                <Send className="size-4" />
+              )}
             </Button>
           </div>
           <div className="text-center text-[9px] text-muted-foreground/35 mt-2 font-mono">

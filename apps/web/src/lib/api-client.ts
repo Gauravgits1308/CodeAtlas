@@ -94,6 +94,47 @@ class ApiClient {
   public delete<T>(path: string, options?: Omit<RequestOptions, "method">): Promise<T> {
     return this.request<T>(path, { ...options, method: "DELETE" })
   }
+
+  public async stream(
+    path: string,
+    data: unknown,
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const url = new URL(`${this.baseUrl}${path}`, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
+    const headers = new Headers()
+    headers.set("Content-Type", "application/json")
+
+    let clerkToken: string | null = null
+    if (typeof window !== "undefined" && window.Clerk?.session) {
+      clerkToken = await window.Clerk.session.getToken()
+    }
+    if (clerkToken) {
+      headers.set("Authorization", `Bearer ${clerkToken}`)
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+      signal,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) return
+
+    const decoder = new TextDecoder()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      onChunk(decoder.decode(value))
+    }
+  }
 }
 
 export const api = new ApiClient()
