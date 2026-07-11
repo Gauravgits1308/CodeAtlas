@@ -1,56 +1,62 @@
-# Walkthrough - Milestone 3.2.3 Repository Indexing Embedding Integration
+# Walkthrough - Milestone 3.3.0 Dashboard Navigation & Clerk Authentication UX
 
-The codebase indexing pipeline has been successfully upgraded to perform sliding window code chunk partition generation, invoke the pluggable OpenRouter `EmbeddingService`, and persist high-dimensional vector embeddings in PostgreSQL.
+An authenticated navigation path has been integrated into CodeAtlas. When users authenticate, the global Navbar dynamically updates to present a **Dashboard** link targeting the authenticated workspace, with active route states cleanly highlighted.
 
 ## Files Modified
-- **Repository Processing Service** ([apps/api/src/services/repository-processing.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-processing.service.ts)):
-  - Injected `EmbeddingService` (via the existing `createAIProvider` factory) and `ChunkEmbeddingRepository` inside the constructor.
-  - Replaced the bulk `createMany` flow with a sequential per-chunk pipeline:
-    1. Persist the chunk using `CodeChunkRepository.create()`.
-    2. Invoke `EmbeddingService.generateEmbedding(content)`.
-    3. Persist the high-dimensional vector using `ChunkEmbeddingRepository.create()` with provider/model/dimensions metadata.
-  - Kept all existing validations, Winston logs, and error handler blocks intact.
+- **Navbar Layout Component** ([apps/web/src/components/layout/Navbar.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/layout/Navbar.tsx)):
+  - Imported Clerk's client-side authentication hook `useAuth`.
+  - Imported Next.js `usePathname` from `next/navigation`.
+  - Added a conditional `Dashboard` navigation entry mapping to `/dashboard` which renders exclusively for authenticated sessions.
+  - Linked root landing targets (`Home`, `Features`, `Pricing`) back to the homepage hashes (`/`, `/#features`), ensuring that anchor jumps work even when called from pages like `/dashboard`.
+  - Implemented visually distinct CSS states to highlight the active tab matching Next.js's current pathname context.
 
 ---
 
-## Code Ingestion Flow Layout
+## Authenticated User Navigation Layout
 
 ```mermaid
 graph TD
-    File["Cloned File Paths"]
-    Chunker["ChunkingService"]
-    ChunkRepo["CodeChunkRepository"]
-    AIService["EmbeddingService"]
-    VectorRepo["ChunkEmbeddingRepository"]
-    DB[("PostgreSQL + pgvector")]
+    Unauth["User (Unauthenticated)"]
+    Auth["User (Authenticated)"]
+    Navbar["Navbar Component (components/layout/Navbar.tsx)"]
+    LandingPage["Landing Page (/)"]
+    SignInPage["Clerk Sign In Page (/sign-in)"]
+    DashboardPage["Dashboard (/dashboard)"]
 
-    File -- "chunkFile()" --> Chunker
-    Chunker -- "1. create(chunkInput)" --> ChunkRepo
-    ChunkRepo -- "Save CodeChunk record" --> DB
-    ChunkRepo -- "Return created chunk ID" --> AIService
-    AIService -- "2. generateEmbedding(content)" --> AIService
-    AIService -- "Return number[] vector" --> VectorRepo
-    VectorRepo -- "3. create(embeddingInput)" --> VectorRepo
-    VectorRepo -- "CAST(vectorString AS vector) insert" --> DB
+    Unauth -- "Render navbar links" --> Navbar
+    Navbar -- "Show: Home, Features, Pricing, Sign In" --> LandingPage
+    Unauth -- "Click 'Sign In'" --> SignInPage
+    SignInPage -- "Authenticate" --> Auth
+    Auth -- "Render navbar links" --> Navbar
+    Navbar -- "Show: Home, Features, Pricing, Dashboard, User Button" --> DashboardPage
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Start workspaces**:
-   ```bash
-   npm run dev
-   ```
+1. **Verify Unauthenticated Navigation Layout**:
+   - Access `http://localhost:3000/`.
+   - The navigation links list displays:
+     * **Home**
+     * **Features**
+     * **Pricing (Soon)**
+     * **Sign In** (Right Action button)
+     * **Get Started** (Right Action button)
+   - Ensure the **Dashboard** link is completely hidden.
 
-2. **Trigger ingestion**:
-   * Navigate to the dashboard at `http://localhost:3000/dev/sync-user`.
-   * Click **Process Repository** for any repository.
-   * As the background worker triggers:
-     - Each code chunk is persisted.
-     - Vector embedding endpoints are queried.
-     - High-dimensional vectors are stored in the database.
-   * Verify using PostgreSQL that table rows exist with non-empty embedding properties:
-     ```bash
-     docker exec -it codeatlas-postgres psql -U postgres -d codeatlas -c "SELECT count(*) FROM \"ChunkEmbedding\";"
-     ```
+2. **Verify Dashboard Route Protections**:
+   - Manually clear session cookies or open an incognito browser window.
+   - Enter: `http://localhost:3000/dashboard`.
+   - Ensure you are immediately redirected to Clerk's sign-in page.
+
+3. **Verify Authenticated UX Navigation Path**:
+   - Sign in using Clerk.
+   - You will be redirected back to the landing page.
+   - Verify the global Navbar now displays:
+     * **Home**
+     * **Features**
+     * **Pricing (Soon)**
+     * **Dashboard**
+     * **User Button** (Clerk profile avatar on the right)
+   - Click the **Dashboard** link and verify Next.js takes you to `/dashboard` with the active route text correctly styled.

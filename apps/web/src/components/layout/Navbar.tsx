@@ -4,7 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { Menu, X, ArrowRight } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Show, UserButton } from "@clerk/nextjs"
+import { Show, UserButton, useAuth } from "@clerk/nextjs"
+import { usePathname } from "next/navigation"
 import { Logo } from "./Logo"
 import { buttonVariants } from "@/components/ui/button"
 import { Container } from "@/components/common/Container"
@@ -14,6 +15,9 @@ import { cn } from "@/lib/utils"
 export function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
+  const pathname = usePathname()
+  const { userId } = useAuth()
+  const isAuthenticated = !!userId
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -28,10 +32,10 @@ export function Navbar() {
   }, [])
 
   const navLinks = [
-    { name: "Features", href: "#features" },
-    { name: "Roadmap", href: "#roadmap" },
-    { name: "Documentation", href: "#documentation" },
+    { name: "Home", href: "/" },
+    { name: "Features", href: "/#features" },
     { name: "Pricing", href: "#", badge: "Soon" },
+    ...(isAuthenticated ? [{ name: "Dashboard", href: "/dashboard" }] : []),
   ]
 
   return (
@@ -57,7 +61,8 @@ export function Navbar() {
                 key={link.name}
                 href={link.href}
                 className={cn(
-                  "text-sm font-medium text-muted-foreground transition-colors hover:text-foreground flex items-center gap-1.5",
+                  "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1.5",
+                  pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground",
                   link.badge && "pointer-events-none"
                 )}
               >
@@ -130,7 +135,8 @@ export function Navbar() {
                     href={link.href}
                     onClick={() => setIsOpen(false)}
                     className={cn(
-                      "text-base font-medium text-muted-foreground hover:text-foreground transition-colors py-1.5 flex items-center gap-2",
+                      "text-base font-medium transition-colors py-1.5 flex items-center gap-2",
+                      pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
                       link.badge && "pointer-events-none opacity-60"
                     )}
                   >
