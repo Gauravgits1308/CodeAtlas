@@ -29,6 +29,7 @@ export class MetricTask implements PipelineTask {
  
   async execute(ctx: PipelineContext): Promise<void> {
     const startTime = Date.now();
+    logger.info(`[Analysis] Started`);
     logger.info(`[MetricTask] Started for repository ${ctx.repositoryId}`);
  
     const repoPath = path.join(__dirname, "../../../../../storage/repositories", ctx.repositoryId);
@@ -131,6 +132,8 @@ export class MetricTask implements PipelineTask {
         averageFileSize,
         dependencyCount,
       });
+ 
+      logger.info(`[Analysis] Completed`);
  
       const duration = (Date.now() - startTime) / 1000;
       logger.info(`[MetricTask] Completed in ${duration.toFixed(2)} seconds`);

@@ -67,6 +67,7 @@ export class PipelineManager {
   async run(): Promise<void> {
     this.startHeartbeat();
     const startTime = Date.now();
+    logger.info(`[Pipeline] Started`);
  
     // Reset database state to QUEUED
     await prisma.repository.update({
