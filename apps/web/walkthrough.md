@@ -1,62 +1,68 @@
-# Walkthrough - Milestone 3.3.3 Landing Page Information Architecture
+# Walkthrough - Milestone 3.3.4 Landing Page Navigation & Email Pipeline Integration
 
-The standalone About and Contact pages have been successfully retired, and their contents refactored as modular, high-quality, scrolling sections on the main landing page, creating a single unified SaaS marketing home route.
+The CodeAtlas landing page sections have been aligned in order matching the sticky header layout, smooth anchor scrolls have been fully resolved, and a production-grade decoupled SMTP contact email pipeline has been deployed.
 
-## Files Deleted
-- **Standalone About Route**: `/about` (`apps/web/src/app/(marketing)/about/page.tsx`)
-- **Standalone Contact Route**: `/contact` (`apps/web/src/app/(marketing)/contact/page.tsx`)
+## Backend Changes
+- **Configuration Index** ([apps/api/src/config/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/config/index.ts)):
+  - Added mappings for `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_SECURE`.
+- **Email Service** ([apps/api/src/services/email.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email.service.ts)):
+  - Implemented modular `EmailProvider` contract and a concrete `NodemailerEmailProvider` to send contact submissions to the project owner's inbox (`gaurav.init13@gmail.com`).
+- **Contact Service** ([apps/api/src/services/contact.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/contact.service.ts)):
+  - Decentralized sanitization and payload validations out of controller level.
+  - Strips HTML content and lowercases email records to guarantee data integrity.
+- **Contact Controller** ([apps/api/src/controllers/contact.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/contact.controller.ts)):
+  - Delegates execution securely to `ContactService`.
 
-## Files Created
-- **About Landing Section** ([apps/web/src/features/landing/components/About.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/About.tsx)):
-  - Declares the `#about` section id.
-  - Highlights Our Mission (simplifying codebase context), Why CodeAtlas (6-card grid), and Built With (interactive tech stack grid).
-- **Documentation Landing Section** ([apps/web/src/features/landing/components/Documentation.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/Documentation.tsx)):
-  - Declares the `#documentation` section id.
-  - Features a developer-oriented Quick Start schema, Core Features description, visually aligned Architecture Pipeline flow, System Specifications, and Coming Soon roadmap updates.
-- **Contact Landing Section** ([apps/web/src/features/landing/components/Contact.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/Contact.tsx)):
-  - Declares the `#contact` section id.
-  - Renders left-hand contact details (Email, Phone, Location) and right-hand contact form query fields linked directly to our backend endpoint at `POST /api/v1/contact`.
-
-## Files Modified
-- **Landing Page Entry** ([apps/web/src/app/(marketing)/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(marketing)/page.tsx)):
-  - Mounted `About`, `Documentation`, and `Contact` components on the homepage sequence.
-- **Navbar Layout Component** ([apps/web/src/components/layout/Navbar.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/layout/Navbar.tsx)):
-  - Reset navigation targets to smooth-scroll directly to homepage anchors (`/#home`, `/#features`, `/#about`, `/#documentation`, `/#contact`).
+## Frontend Changes
+- **FAQ Component** ([apps/web/src/features/landing/components/FAQ.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/FAQ.tsx)):
+  - Anchored Section element with `id="pricing"` to map Pricing scroll requests.
+- **Contact Form Actions** ([apps/web/src/features/landing/components/Contact.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/Contact.tsx)):
+  - Validates fields client-side before sending.
+  - Disables user input fields and triggers standard loading icons to prevent double form submissions.
+  - Clears inputs upon receipt of a successful backend API response.
 
 ---
 
-## Single Page Marketing Architecture
+## Production Email Submission Pipeline
 
 ```mermaid
 graph TD
-    Navbar["Navbar Component (Navbar.tsx)"]
-    HeroSec["1. Hero (#home)"]
-    FeaturesSec["2. Features (#features)"]
-    PreviewSec["3. Product Preview"]
-    WhySec["4. Why CodeAtlas"]
-    AboutSec["5. About (#about)"]
-    DocSec["6. Documentation (#documentation)"]
-    RoadmapSec["7. Roadmap"]
-    FAQSec["8. FAQ"]
-    ContactSec["9. Contact (#contact)"]
+    Client["Contact Section Form Component"]
+    BackendRouter["Router (routes/contact.routes.ts)"]
+    Controller["ContactController (controllers/contact.controller.ts)"]
+    ContactService["ContactService (services/contact.service.ts)"]
+    EmailService["EmailService (services/email.service.ts)"]
+    Nodemailer["NodemailerEmailProvider (SMTP Dispatch)"]
+    OwnerInbox["gaurav.init13@gmail.com"]
 
-    Navbar -- "Click Home" --> HeroSec
-    Navbar -- "Click Features" --> FeaturesSec
-    Navbar -- "Click About" --> AboutSec
-    Navbar -- "Click Documentation" --> DocSec
-    Navbar -- "Click Contact" --> ContactSec
+    Client -- "POST /api/v1/contact" --> BackendRouter
+    BackendRouter --> Controller
+    Controller -- "1. processContactSubmission()" --> ContactService
+    Note over ContactService: Sanitizes message strings & validates values
+    ContactService -- "2. sendContactEmail()" --> EmailService
+    EmailService -- "3. sendEmail()" --> Nodemailer
+    Nodemailer -- "SMTP Send Protocol" --> OwnerInbox
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Smooth Scrolling**:
+1. **Verify Section Alignment**:
    - Access `http://localhost:3000/`.
-   - Click the navigation headers: **Features**, **About**, **Documentation**, **Contact**.
-   - Verify that the window smoothly transitions directly to the respective homepage section.
+   - Scroll page and check order is exactly:
+     * **Hero** (`id="home"`)
+     * **Features** (`id="features"`)
+     * **About** (`id="about"`)
+     * **Documentation** (`id="documentation"`)
+     * **Pricing / FAQ** (`id="pricing"`)
+     * **Contact** (`id="contact"`)
+   - Click each navbar button to confirm that it smooth-scrolls offset to the sticky header.
 
-2. **Verify Integrated Contact Submissions**:
-   - Scroll to the bottom Contact section.
-   - Enter contact details and submit.
-   - Verify that alerts/notifications update successfully and inputs reset as before.
+2. **Verify SMTP Configuration & Email logs**:
+   - Start the workspace with SMTP variables:
+     ```bash
+     SMTP_HOST=smtp.gmail.com SMTP_PORT=587 SMTP_USER=your_user SMTP_PASS=your_pass npm run dev
+     ```
+   - Submit a form query.
+   - Verify that the terminal logs `Email successfully dispatched via SMTP` or runs the simulated logger fallback seamlessly.

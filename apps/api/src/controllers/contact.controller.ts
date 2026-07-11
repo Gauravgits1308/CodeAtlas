@@ -1,13 +1,18 @@
 import { Request, Response, NextFunction } from "express";
-import { asyncHandler, AppError } from "../utils/errors";
-import { logger } from "../utils/logger";
-import { config } from "../config";
+import { asyncHandler } from "../utils/errors";
+import { ContactService } from "../services/contact.service";
 
 export class ContactController {
+  private contactService: ContactService;
+
+  constructor(contactService?: ContactService) {
+    this.contactService = contactService || new ContactService();
+  }
+
   /**
    * Receives and validates contact form queries.
    */
-  submitContact = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  submitContact = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { name, email, subject, message } = req.body as {
       name?: string;
       email?: string;
@@ -15,30 +20,17 @@ export class ContactController {
       message?: string;
     };
 
-    if (!name || typeof name !== "string" || !name.trim()) {
-      return next(new AppError("Name is required and must be a valid string.", 400));
-    }
-    if (!email || typeof email !== "string" || !email.includes("@")) {
-      return next(new AppError("A valid email address is required.", 400));
-    }
-    if (!subject || typeof subject !== "string" || !subject.trim()) {
-      return next(new AppError("Subject is required and must be a valid string.", 400));
-    }
-    if (!message || typeof message !== "string" || !message.trim()) {
-      return next(new AppError("Message content is required and must be a valid string.", 400));
-    }
-
-    // Forwarding the query to Winston console logs (representing owner message delivery)
-    logger.info(`[Contact Form Submission]
-Name: ${name}
-Email: ${email}
-Subject: ${subject}
-Message: ${message}
-Owner Email Forward Target: ${config.contactEmail}`);
+    // Delegate sanitization, validation, and email dispatching to ContactService
+    await this.contactService.processContactSubmission({
+      name: name || "",
+      email: email || "",
+      subject: subject || "",
+      message: message || "",
+    });
 
     res.status(200).json({
       success: true,
-      message: "Your message has been successfully received. We will get back to you shortly.",
+      message: "Your message has been sent successfully.",
     });
   });
 }

@@ -16,7 +16,7 @@ export function FAQ() {
   }
 
   return (
-    <Section className="border-t border-border/40 bg-[#0B0F19]">
+    <Section id="pricing" className="border-t border-border/40 bg-[#0B0F19]">
       <Container className="space-y-16">
         {/* Header Block */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
