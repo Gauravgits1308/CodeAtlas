@@ -14,9 +14,12 @@ import {
   ExternalLink,
   CheckCircle,
   Loader2,
-  XCircle
+  XCircle,
+  Star,
+  GitFork
 } from "lucide-react"
 import { toast } from "sonner"
+import { api } from "@/lib/api-client"
 import { Container } from "@/components/common/Container"
 import { Heading } from "@/components/common/Heading"
 import { Badge } from "@/components/common/Badge"
@@ -24,73 +27,67 @@ import { Button } from "@/components/ui/button"
 import { RepoSelectionModal } from "@/features/dashboard/components/RepoSelectionModal"
 import { RepositoryDetails } from "@/features/dashboard/types"
 
-const mockRepositories: RepositoryDetails[] = [
-  {
-    id: "1",
-    name: "code-atlas-core",
-    owner: "codeatlas-org",
-    url: "https://github.com/codeatlas-org/code-atlas-core",
-    provider: "github",
-    isPrivate: true,
-    status: "active",
-    lastSyncedAt: "2026-07-07T12:00:00Z",
-    createdAt: "2026-06-01T08:00:00Z",
-    metrics: {
-      linesCount: 45200,
-      filesCount: 312,
-      languages: [
-        { name: "TypeScript", percentage: 68 },
-        { name: "React", percentage: 22 },
-        { name: "CSS", percentage: 10 },
-      ],
-      complexityScore: 78,
-    },
-  },
-  {
-    id: "2",
-    name: "atlas-indexer",
-    owner: "codeatlas-org",
-    url: "https://github.com/codeatlas-org/atlas-indexer",
-    provider: "github",
-    isPrivate: true,
-    status: "indexing",
-    createdAt: "2026-07-01T10:00:00Z",
-    metrics: {
-      linesCount: 18900,
-      filesCount: 145,
-      languages: [
-        { name: "Go", percentage: 92 },
-        { name: "Shell", percentage: 8 },
-      ],
-      complexityScore: 65,
-    },
-  },
-  {
-    id: "3",
-    name: "documentation-gen",
-    owner: "codeatlas-org",
-    url: "https://github.com/codeatlas-org/documentation-gen",
-    provider: "github",
-    isPrivate: false,
-    status: "failed",
-    lastSyncedAt: "2026-07-05T14:20:00Z",
-    createdAt: "2026-06-15T09:00:00Z",
-    metrics: {
-      linesCount: 8400,
-      filesCount: 56,
-      languages: [
-        { name: "Python", percentage: 100 },
-      ],
-      complexityScore: 42,
-    },
-  },
-]
+interface DBRepository {
+  id: string
+  name: string
+  owner: string
+  cloneUrl: string
+  htmlUrl: string
+  visibility: string
+  status: string
+  updatedAt: string
+  createdAt: string
+  primaryLanguage: string | null
+  stars: number
+  forks: number
+  metrics?: {
+    linesCount: number
+    filesCount: number
+    languages: { name: string; percentage: number }[]
+    complexityScore?: number
+  }
+}
 
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [repositories, setRepositories] = React.useState<RepositoryDetails[]>(mockRepositories)
+  const [repositories, setRepositories] = React.useState<RepositoryDetails[]>([])
   const [syncingId, setSyncingId] = React.useState<string | null>(null)
   const [isRepoModalOpen, setIsRepoModalOpen] = React.useState(false)
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  const fetchRepos = React.useCallback(async () => {
+    try {
+      const response = await api.get<{ success: boolean; repositories: DBRepository[] }>("/v1/repositories")
+      if (response.success && Array.isArray(response.repositories)) {
+        const mapped = response.repositories.map((repo) => ({
+          id: repo.id,
+          name: repo.name,
+          owner: repo.owner,
+          url: repo.htmlUrl || repo.cloneUrl,
+          provider: "github" as const,
+          isPrivate: repo.visibility === "private",
+          status: repo.status as "indexing" | "active" | "failed",
+          lastSyncedAt: repo.updatedAt,
+          createdAt: repo.createdAt,
+          primaryLanguage: repo.primaryLanguage,
+          stars: repo.stars,
+          forks: repo.forks,
+          metrics: repo.metrics || undefined,
+        }))
+        setRepositories(mapped)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to load connected repositories.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchRepos()
+  }, [fetchRepos])
 
   // Filter repositories based on search
   const filteredRepos = repositories.filter((repo) =>
@@ -101,9 +98,9 @@ export default function DashboardPage() {
   const totalRepos = repositories.length
   const totalFiles = repositories.reduce((sum, repo) => sum + (repo.metrics?.filesCount || 0), 0)
   const totalLines = repositories.reduce((sum, repo) => sum + (repo.metrics?.linesCount || 0), 0)
-  const avgComplexity = Math.round(
-    repositories.reduce((sum, repo) => sum + (repo.metrics?.complexityScore || 0), 0) / totalRepos
-  )
+  const avgComplexity = totalRepos > 0
+    ? Math.round(repositories.reduce((sum, repo) => sum + (repo.metrics?.complexityScore || 0), 0) / totalRepos)
+    : 0
 
   const handleConnectRepo = () => {
     setIsRepoModalOpen(true)
@@ -230,7 +227,27 @@ export default function DashboardPage() {
 
           {/* Repositories Cards View */}
           <div className="grid grid-cols-1 gap-4">
-            {filteredRepos.length > 0 ? (
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Loader2 className="size-8 text-primary animate-spin" />
+                <p className="text-sm text-muted-foreground">Loading connected repositories...</p>
+              </div>
+            ) : totalRepos === 0 ? (
+              <div className="text-center py-16 bg-[#111827]/10 border border-border/20 rounded-xl space-y-4 max-w-xl mx-auto">
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  No repositories have been connected to CodeAtlas yet.
+                  <br />
+                  Connect a repository from GitHub to begin code analysis and semantic indexing.
+                </p>
+                <Button 
+                  onClick={handleConnectRepo} 
+                  className="bg-primary hover:bg-primary/95 text-white font-semibold flex items-center gap-1.5 mx-auto cursor-pointer rounded-xl text-xs h-9"
+                >
+                  <Plus className="size-4" />
+                  <span>Connect Your First Repository</span>
+                </Button>
+              </div>
+            ) : filteredRepos.length > 0 ? (
               filteredRepos.map((repo) => (
                 <div 
                   key={repo.id} 
@@ -275,8 +292,32 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Metadata Subtitles */}
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground font-mono">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground font-mono">
                       <span>Owner: {repo.owner}</span>
+                      {repo.primaryLanguage && (
+                        <>
+                          <span>•</span>
+                          <span>{repo.primaryLanguage}</span>
+                        </>
+                      )}
+                      {repo.stars !== undefined && repo.stars > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5">
+                            <Star className="size-3 text-amber-400 fill-amber-400/10" />
+                            {repo.stars}
+                          </span>
+                        </>
+                      )}
+                      {repo.forks !== undefined && repo.forks > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5">
+                            <GitFork className="size-3 text-sky-400" />
+                            {repo.forks}
+                          </span>
+                        </>
+                      )}
                       <span>•</span>
                       <span>Files: {repo.metrics?.filesCount || 0}</span>
                       <span>•</span>
@@ -290,11 +331,10 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Languages Stack Bar */}
-                    {repo.metrics?.languages && (
+                    {repo.metrics?.languages && repo.metrics.languages.length > 0 && (
                       <div className="space-y-1.5 max-w-md pt-1">
                         <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
                           {repo.metrics.languages.map((lang, idx) => {
-                            // Assign unique colors to top languages
                             const colors = ["bg-primary", "bg-purple-500", "bg-emerald-500", "bg-amber-500"]
                             const color = colors[idx % colors.length]
                             return (
@@ -354,7 +394,11 @@ export default function DashboardPage() {
           </div>
         </div>
       </Container>
-      <RepoSelectionModal isOpen={isRepoModalOpen} onClose={() => setIsRepoModalOpen(false)} />
+      <RepoSelectionModal 
+        isOpen={isRepoModalOpen} 
+        onClose={() => setIsRepoModalOpen(false)} 
+        onImportSuccess={fetchRepos}
+      />
     </div>
   )
 }

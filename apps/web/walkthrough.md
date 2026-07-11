@@ -1,55 +1,52 @@
-# Walkthrough - Milestone 3.3.2 GitHub Repository Selection Modal
+# Walkthrough - Milestone 3.3.3 GitHub Repository Import Integration
 
-A premium user-friendly repository picker modal component has been designed and integrated with the dashboard page layout. It pulls from `/api/v1/github/repositories` using the client SDK, enables client-side searching, sorting, and multi-selection, and logs selected records upon submission.
-
-## Files Created
-- **Repo Selection Modal Component** ([apps/web/src/features/dashboard/components/RepoSelectionModal.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/components/RepoSelectionModal.tsx)):
-  - Declares the `RepoSelectionModal` component structure.
-  - Controls loading skeletons, search/sort filters, and multi-checkbox select states.
-  - Logs selected repositories to the console upon importing.
+Repository import operations have been fully connected between the `RepoSelectionModal` frontend picker and the backend API endpoint (`POST /api/v1/repositories/import`).
 
 ## Files Modified
+- **Dashboard Types** ([apps/web/src/features/dashboard/types.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/types.ts)):
+  - Added optional `primaryLanguage`, `stars`, and `forks` properties to the `Repository` interface.
+- **Selection Modal Component** ([apps/web/src/features/dashboard/components/RepoSelectionModal.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/components/RepoSelectionModal.tsx)):
+  - Modified `handleImport` to trigger `POST /v1/repositories/import` sending payloads mapped matching `ImportRepositoryPayload`.
+  - Disables action controls and displays loading spinners while imports run.
+  - Implemented custom `onImportSuccess` callback triggers.
+  - Triggers success toast popups or duplicate alerts ("Successfully imported X repositories." / "Repositories synchronized successfully.").
 - **Dashboard Page Component** ([apps/web/src/app/(dashboard)/dashboard/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/page.tsx)):
-  - Wire the modal visibility trigger `isRepoModalOpen` to the "Connect Repository" button handler.
+  - Replaced local mock listings with actual API request calls to `GET /v1/repositories`.
+  - Added loaders, empty states, and mapped the database repository records to match the details list cards.
+  - Displays primaryLanguage, stars, and forks alongside owner information.
 
 ---
 
-## Interactive Select Loop
+## Import Execution Flow
 
 ```mermaid
 graph TD
-    Dashboard["Dashboard (page.tsx)"]
-    ConnectBtn["Connect Repository Button"]
-    Modal["RepoSelectionModal (RepoSelectionModal.tsx)"]
-    FetchRepos["Fetch GET /api/v1/github/repositories"]
-    RenderRepos["Render cards & Search/Sort filters"]
-    SelectRepo["User toggles card selection checkbox"]
-    FooterBtn["Click 'Import Selected'"]
-    ConsoleLog["Log selection array & show Sonner toast info"]
+    User["Dashboard View"]
+    Modal["RepoSelectionModal Overlay"]
+    PostRequest["POST /api/v1/repositories/import"]
+    DbUpsert["Backend Database Upsert"]
+    SuccessToast["Toast Success Alert"]
+    RefreshCall["GET /api/v1/repositories"]
+    RenderUpdated["Re-render Grid with Imported Repositories"]
 
-    Dashboard --> ConnectBtn
-    ConnectBtn --> Modal
-    Modal --> FetchRepos
-    FetchRepos --> RenderRepos
-    RenderRepos --> SelectRepo
-    SelectRepo --> FooterBtn
-    FooterBtn --> ConsoleLog
+    User -- "Clicks Connect Repository & selects repos" --> Modal
+    Modal -- "Clicks Import Selected" --> PostRequest
+    PostRequest --> DbUpsert
+    DbUpsert -- "Return 201 JSON Success response" --> Modal
+    Modal -- "1. Trigger toast" --> SuccessToast
+    Modal -- "2. Trigger onImportSuccess Callback" --> RefreshCall
+    RefreshCall -- "Populate updated state array" --> RenderUpdated
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Start the applications**:
-   - Run the development environment:
-     ```bash
-     npm run dev
-     ```
+1. **Verify Empty State Dashboard Layout**:
+   - Access the dashboard page at `/dashboard` with an empty account.
+   - Confirm that the loading spinner mounts and resolves to a clean empty state card prompting connection.
 
-2. **Trigger the Modal Dialog**:
-   - Access the dashboard page at `/dashboard`.
-   - Click the "Connect Repository" button in the upper right.
-   - Verify that the loading skeleton mounts and then displays the fetched repositories list.
-   - Type search queries to verify that search filters list matching repositories.
-   - Toggle sorting to test sorting by name, stars, and recently updated values.
-   - Select multiple cards and click **Import Selected**. Check that the browser developer tools console outputs the selected array and triggers a `Sonner` info toast alert.
+2. **Run imports**:
+   - Connect repository using the modal picker.
+   - Select multiple cards and click **Import Selected**.
+   - Confirm the success toast is shown and the imported repositories are rendered inside the dashboard grid.

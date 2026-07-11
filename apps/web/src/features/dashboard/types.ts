@@ -8,6 +8,9 @@ export interface Repository {
   status: "indexing" | "active" | "failed"
   lastSyncedAt?: string
   createdAt: string
+  primaryLanguage?: string | null
+  stars?: number
+  forks?: number
 }
 
 export interface CodeMetric {

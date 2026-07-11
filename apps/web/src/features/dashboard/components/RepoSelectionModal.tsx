@@ -12,7 +12,8 @@ import {
   Check, 
   Calendar,
   AlertCircle,
-  FolderGit2
+  FolderGit2,
+  Loader2
 } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
@@ -39,11 +40,13 @@ export interface GitHubRepositoryDto {
 interface RepoSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onImportSuccess?: () => void;
 }
 
-export function RepoSelectionModal({ isOpen, onClose }: RepoSelectionModalProps) {
+export function RepoSelectionModal({ isOpen, onClose, onImportSuccess }: RepoSelectionModalProps) {
   const [repos, setRepos] = React.useState<GitHubRepositoryDto[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [isImporting, setIsImporting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [searchQuery, setSearchQuery] = React.useState("")
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -100,14 +103,53 @@ export function RepoSelectionModal({ isOpen, onClose }: RepoSelectionModalProps)
     })
   }
 
-  const handleImport = () => {
-    if (selectedIds.size === 0) return
+  const handleImport = async () => {
+    if (selectedIds.size === 0 || isImporting) return
     
+    setIsImporting(true)
     const selectedRepos = repos.filter((r) => selectedIds.has(r.githubRepoId))
-    console.log("Selected Repositories to Import:", selectedRepos)
-    
-    toast.info(`Selected ${selectedIds.size} repositories logged to console successfully. Import pipeline will be implemented in the next sprint.`)
-    onClose()
+    const payloads = selectedRepos.map((repo) => ({
+      githubRepoId: repo.githubRepoId,
+      name: repo.name,
+      fullName: repo.fullName,
+      owner: repo.owner,
+      visibility: repo.visibility,
+      defaultBranch: repo.defaultBranch,
+      cloneUrl: repo.cloneUrl,
+      htmlUrl: repo.htmlUrl,
+      description: repo.description,
+      primaryLanguage: repo.primaryLanguage,
+      stars: repo.stars,
+      forks: repo.forks,
+      watchers: repo.watchers,
+    }))
+
+    try {
+      const response = await api.post<{ success: boolean; imported: number; repositories: unknown[] }>(
+        "/v1/repositories/import",
+        { repositories: payloads }
+      )
+
+      if (response.success) {
+        if (response.imported === 0) {
+          toast.success("Repositories synchronized successfully.")
+        } else {
+          toast.success(`Successfully imported ${response.imported} repositor${response.imported === 1 ? "y" : "ies"}.`)
+        }
+        
+        if (onImportSuccess) {
+          onImportSuccess()
+        }
+        onClose()
+      } else {
+        toast.error("Failed to import repositories.")
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "An error occurred during repository import.")
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   // Filter and sort
@@ -367,18 +409,26 @@ export function RepoSelectionModal({ isOpen, onClose }: RepoSelectionModalProps)
               <div className="flex items-center gap-3">
                 <Button
                   variant="ghost"
+                  disabled={isImporting}
                   onClick={onClose}
-                  className="rounded-xl border border-transparent hover:border-border/30 hover:bg-muted text-xs h-9 px-4 cursor-pointer"
+                  className="rounded-xl border border-transparent hover:border-border/30 hover:bg-muted text-xs h-9 px-4 cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   variant="default"
-                  disabled={selectedIds.size === 0 || loading}
+                  disabled={selectedIds.size === 0 || loading || isImporting}
                   onClick={handleImport}
-                  className="bg-primary hover:bg-primary/95 text-white font-semibold text-xs h-9 px-4 rounded-xl cursor-pointer disabled:opacity-50"
+                  className="bg-primary hover:bg-primary/95 text-white font-semibold text-xs h-9 px-4 rounded-xl cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  Import Selected
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <span>Import Selected</span>
+                  )}
                 </Button>
               </div>
             </div>
