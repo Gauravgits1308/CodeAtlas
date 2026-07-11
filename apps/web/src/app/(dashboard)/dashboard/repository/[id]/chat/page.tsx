@@ -86,6 +86,33 @@ interface Conversation {
   createdAt: string
 }
 
+interface HealthCategory {
+  score: number
+  explanation: string
+}
+
+interface HealthReport {
+  categories: {
+    architecture: HealthCategory
+    maintainability: HealthCategory
+    readability: HealthCategory
+    security: HealthCategory
+    performance: HealthCategory
+    documentation: HealthCategory
+    testing: HealthCategory
+    scalability: HealthCategory
+  }
+  overallScore: number
+  maturity: string
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  quickWins: string[]
+  longTermImprovements: string[]
+  topRecommendations: string[]
+  rawMarkdown: string
+}
+
 const SUGGESTED_CARDS = [
   { icon: "🏗", title: "Explain Architecture", text: "Explain repository architecture" },
   { icon: "🔐", title: "Explain Authentication", text: "Where is authentication handled?" },
@@ -134,6 +161,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Layout Tabs on Mobile viewports: 'chat' | 'explorer' | 'code'
   const [activeTab, setActiveTab] = React.useState<"chat" | "explorer" | "code">("chat")
 
+  // Toggle center panel views: 'code' | 'health'
+  const [centerView, setCenterView] = React.useState<"code" | "health">("code")
+
   const [repoDetails, setRepoDetails] = React.useState<RepositoryDetails | null>(null)
   const [messages, setMessages] = React.useState<Message[]>([])
   const [question, setQuestion] = React.useState("")
@@ -162,6 +192,10 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const [isExplaining, setIsExplaining] = React.useState(false)
   const [explainFollowUp, setExplainFollowUp] = React.useState("")
 
+  // Health Dashboard State
+  const [healthReport, setHealthReport] = React.useState<HealthReport | null>(null)
+  const [isLoadingHealth, setIsLoadingHealth] = React.useState(false)
+
   // Explorer State
   const [filesTree, setFilesTree] = React.useState<FileTreeNode[]>([])
   const [searchFilter, setSearchFilter] = React.useState("")
@@ -189,6 +223,24 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     } catch (err: unknown) {
       const error = err as Error
       console.error("Failed to load conversations:", error.message)
+    }
+  }, [repositoryId])
+
+  // Fetch health report dashboard metrics
+  const fetchHealthReport = React.useCallback(async (refresh = false) => {
+    setIsLoadingHealth(true)
+    try {
+      const res = await api.get<{ success: boolean; report: HealthReport }>(
+        `/v1/repositories/${repositoryId}/health${refresh ? "?refresh=true" : ""}`
+      )
+      if (res.success) {
+        setHealthReport(res.report)
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to load engineering health report.")
+    } finally {
+      setIsLoadingHealth(false)
     }
   }, [repositoryId])
 
@@ -251,6 +303,33 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     fetchRepoData()
   }, [repositoryId, router, fetchConversations])
 
+  // Inject print styles dynamically to exclude page templates on printing
+  React.useEffect(() => {
+    const style = document.createElement("style")
+    style.innerHTML = `
+      @media print {
+        body * {
+          visibility: hidden !important;
+        }
+        #printable-health-report, #printable-health-report * {
+          visibility: visible !important;
+        }
+        #printable-health-report {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          background: #080B12 !important;
+          color: #E2E8F0 !important;
+        }
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.head.removeChild(style)
+    }
+  }, [])
+
   // Scroll to chat bottom on new messages
   React.useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -266,6 +345,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   // Clickable citation trigger scrolling and highlights inside Viewer
   const handleOpenCitation = async (source: { filePath: string; startLine: number; endLine: number }) => {
+    setCenterView("code")
     setSelectedFilePath(source.filePath)
     setHighlightedLines({ start: source.startLine, end: source.endLine })
     
@@ -302,6 +382,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   // Load standard file select from Tree Sidebar
   const handleSelectFile = async (filePath: string) => {
+    setCenterView("code")
     setSelectedFilePath(filePath)
     setHighlightedLines(null)
     setActiveTab("code")
@@ -617,6 +698,27 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     toast.success("Selection review successfully imported into active chat thread.")
   }
 
+  // Export health report as Markdown file
+  const handleExportMarkdown = () => {
+    if (!healthReport) return
+    const blob = new Blob([healthReport.rawMarkdown], { type: "text/markdown" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${repoDetails?.name || "repository"}-health-report.md`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success("Markdown health report downloaded successfully.")
+  }
+
+  // Export health report as PDF document using print bindings
+  const handleExportPDF = () => {
+    toast.info("Opening browser print dialog to save PDF.")
+    setTimeout(() => {
+      window.print()
+    }, 300)
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -762,179 +864,395 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         </div>
       </aside>
 
-      {/* COLUMN 2: CENTER PANEL (Code Viewer - Independently scrollable) */}
-      <main className={`flex-1 flex flex-row min-w-0 bg-[#080B12] transition-all duration-200 border-r border-border/20 ${
+      {/* COLUMN 2: CENTER PANEL (Code Viewer / Code Health - Independently scrollable) */}
+      <main className={`flex-1 flex flex-col min-w-0 bg-[#080B12] transition-all duration-200 border-r border-border/20 ${
         activeTab === "code" ? "flex" : "hidden md:flex"
       }`}>
-        {selectedFilePath ? (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-            <div className="px-4 py-3 bg-[#111622]/60 border-b border-border/15 flex items-center justify-between gap-4 select-none shrink-0 font-mono text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5 font-mono text-foreground font-semibold">
-                <FileCode className="size-4 text-primary" />
-                {selectedFilePath.split("/").pop()}
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] text-muted-foreground/45 truncate max-w-xs">{selectedFilePath}</span>
-                {fileContents[selectedFilePath] && (
-                  <button
-                    onClick={() => handleCopyCode(fileContents[selectedFilePath] || "")}
-                    className="hover:text-foreground flex items-center gap-1 transition-all cursor-pointer font-mono"
-                  >
-                    {copiedCode ? (
-                      <>
-                        <Check className="size-3.5 text-emerald-400" />
-                        <span className="text-[10px] text-emerald-400">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="size-3.5" />
-                        <span className="text-[10px]">Copy</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div 
-              className="flex-1 overflow-auto p-4 select-text"
-              onMouseUp={handleCodeAreaMouseUp}
+        
+        {/* Center Panel Header Tabs */}
+        <div className="px-4 py-2.5 bg-[#0A0D15]/80 border-b border-border/15 flex items-center justify-between shrink-0 select-none">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCenterView("code")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                centerView === "code"
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+              }`}
             >
-              {isLoadingFile ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2 font-mono text-xs text-muted-foreground">
-                  <Loader2 className="size-6 text-primary animate-spin" />
-                  <span>Fetching file content bytes...</span>
-                </div>
-              ) : fileContents[selectedFilePath] ? (
-                <div className="flex font-mono text-[11px] text-[#E2E8F0] min-w-max select-text">
-                  <div className="text-muted-foreground/30 text-right pr-4 border-r border-border/10 select-none min-w-8 font-mono">
-                    {fileContents[selectedFilePath].split("\n").map((_, lineIdx) => (
-                      <div key={lineIdx} className="min-h-6 flex items-center justify-end font-mono">
-                        {lineIdx + 1}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex-1 pl-4 font-mono select-text">
-                    {fileContents[selectedFilePath].split("\n").map((lineContent, lineIdx) => {
-                      const lineNumber = lineIdx + 1
-                      const isHighlighted =
-                        highlightedLines &&
-                        lineNumber >= highlightedLines.start &&
-                        lineNumber <= highlightedLines.end
+              📂 Code Viewer
+            </button>
+            <button
+              onClick={() => {
+                setCenterView("health")
+                if (!healthReport) fetchHealthReport()
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                centerView === "health"
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+              }`}
+            >
+              📊 Repository Health
+            </button>
+          </div>
+          
+          {centerView === "health" && healthReport && (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => fetchHealthReport(true)}
+                variant="ghost"
+                className="h-7 px-2.5 text-[10px] font-mono text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                disabled={isLoadingHealth}
+              >
+                {isLoadingHealth ? <Loader2 className="size-3 animate-spin mr-1" /> : "🔄 Refresh"}
+              </Button>
+              <Button
+                onClick={handleExportPDF}
+                variant="outline"
+                className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 cursor-pointer text-foreground"
+              >
+                📄 PDF
+              </Button>
+              <Button
+                onClick={handleExportMarkdown}
+                variant="outline"
+                className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 cursor-pointer text-foreground"
+              >
+                📝 MD
+              </Button>
+            </div>
+          )}
+        </div>
 
+        {/* Center Panel Content area switch */}
+        {centerView === "health" ? (
+          /* Health Dashboard report metrics view */
+          <div id="printable-health-report" className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin select-text bg-[#080B12]">
+            {isLoadingHealth ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 font-mono text-xs text-muted-foreground select-none py-24">
+                <Loader2 className="size-8 text-primary animate-spin" />
+                <span>Generating AI Health Report... This may take up to 20 seconds.</span>
+              </div>
+            ) : healthReport ? (
+              <div className="space-y-6 select-text">
+                
+                {/* Banner Overview Card */}
+                <div className="p-6 bg-[#111622]/40 border border-border/15 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-xl">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-sm font-extrabold font-mono uppercase tracking-wider text-foreground">AI Health Summary</h2>
+                      <Badge className="bg-primary/20 text-primary border-primary/30 font-mono text-[9px] py-0 px-2.5">
+                        Maturity: {healthReport.maturity}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground/80 leading-relaxed font-sans select-text">
+                      {healthReport.summary}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center p-4 bg-[#161D30]/30 border border-border/10 rounded-xl min-w-36">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider font-mono select-none">Overall Score</span>
+                    <span className="text-3xl font-extrabold text-foreground font-mono mt-1">{healthReport.overallScore}</span>
+                    <span className="text-[9px] text-muted-foreground/50 font-mono">out of 10</span>
+                  </div>
+                </div>
+
+                {/* Categories Grid */}
+                <div className="space-y-2.5">
+                  <span className="text-[9px] uppercase font-bold text-muted-foreground/50 tracking-wider font-mono select-none">Category Assessment Scorecard</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {Object.entries(healthReport.categories).map(([key, cat]) => {
+                      const scoreColor = 
+                        cat.score >= 8.5 ? "bg-emerald-500" :
+                        cat.score >= 7.0 ? "bg-amber-500" : "bg-rose-500"
+                      const textColor =
+                        cat.score >= 8.5 ? "text-emerald-400" :
+                        cat.score >= 7.0 ? "text-amber-400" : "text-rose-400"
+                        
                       return (
-                        <div
-                          key={lineIdx}
-                          id={`line-${lineNumber}`}
-                          className={`min-h-6 flex items-center font-mono text-[11px] pl-2 pr-4 transition-all duration-300 select-text ${
-                            isHighlighted
-                              ? "bg-amber-500/10 border-l-2 border-amber-400 text-amber-100 font-bold"
-                              : "hover:bg-[#1A233C]/20"
-                          }`}
-                        >
-                          {lineContent || <span className="opacity-0"> </span>}
+                        <div key={key} className="p-4 bg-[#111622]/30 border border-border/10 rounded-xl space-y-3 font-mono">
+                          <div className="flex items-center justify-between gap-2 select-none">
+                            <span className="text-xs font-bold capitalize text-foreground">{key}</span>
+                            <span className={`text-xs font-extrabold ${textColor}`}>{cat.score}/10</span>
+                          </div>
+                          
+                          {/* Progress Bar */}
+                          <div className="w-full bg-[#1A233C]/40 rounded-full h-1.5 overflow-hidden select-none">
+                            <div 
+                              className={`h-full ${scoreColor} transition-all duration-500`}
+                              style={{ width: `${cat.score * 10}%` }}
+                            />
+                          </div>
+                          
+                          <p className="text-[9px] text-muted-foreground/60 leading-relaxed font-mono select-text">
+                            {cat.explanation}
+                          </p>
                         </div>
                       )
                     })}
                   </div>
                 </div>
-              ) : (
-                <div className="text-center text-xs text-muted-foreground/30 font-mono py-24 select-none">
-                  Empty File content
+
+                {/* Strengths & Weaknesses */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Strengths */}
+                  <div className="p-5 bg-emerald-950/5 border border-emerald-500/10 rounded-2xl space-y-3">
+                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-1.5 select-none">
+                      <span>✅</span> Core Strengths
+                    </h3>
+                    <ul className="space-y-2 text-xs text-muted-foreground/90 font-sans list-disc pl-4 select-text">
+                      {healthReport.strengths.map((str, idx) => (
+                        <li key={idx} className="leading-relaxed select-text">{str}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  {/* Weaknesses */}
+                  <div className="p-5 bg-rose-950/5 border border-rose-500/10 rounded-2xl space-y-3">
+                    <h3 className="text-xs font-bold text-rose-400 uppercase tracking-wider font-mono flex items-center gap-1.5 select-none">
+                      <span>⚠️</span> Code Weaknesses
+                    </h3>
+                    <ul className="space-y-2 text-xs text-muted-foreground/90 font-sans list-disc pl-4 select-text">
+                      {healthReport.weaknesses.map((weak, idx) => (
+                        <li key={idx} className="leading-relaxed select-text">{weak}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* Recommendations Section */}
+                <div className="p-5 bg-[#111622]/40 border border-border/15 rounded-2xl space-y-4">
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider font-mono select-none">
+                    🚀 Top 5 Engineering Recommendations
+                  </h3>
+                  <div className="space-y-2">
+                    {healthReport.topRecommendations.map((rec, idx) => (
+                      <div key={idx} className="flex gap-3 text-xs text-muted-foreground leading-relaxed p-3 bg-[#0A0D15]/40 border border-border/5 rounded-xl font-mono select-text">
+                        <span className="font-extrabold text-primary shrink-0 select-none">0{idx + 1}.</span>
+                        <span className="select-text">{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick Wins vs Long-Term */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Quick Wins */}
+                  <div className="p-5 bg-amber-950/5 border border-amber-500/10 rounded-2xl space-y-3 font-mono">
+                    <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                      <span>⚡</span> Quick Wins (Low Effort)
+                    </h3>
+                    <ul className="space-y-2 text-xs text-muted-foreground/90 list-disc pl-4 select-text">
+                      {healthReport.quickWins.map((win, idx) => (
+                        <li key={idx} className="leading-relaxed select-text">{win}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  
+                  {/* Long-Term */}
+                  <div className="p-5 bg-sky-950/5 border border-sky-500/10 rounded-2xl space-y-3 font-mono">
+                    <h3 className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5 select-none">
+                      <span>📅</span> Long-Term Improvements
+                    </h3>
+                    <ul className="space-y-2 text-xs text-muted-foreground/90 list-disc pl-4 select-text">
+                      {healthReport.longTermImprovements.map((imp, idx) => (
+                        <li key={idx} className="leading-relaxed select-text">{imp}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Collapsible detailed report */}
+                <div className="p-5 bg-[#0B0D15] border border-border/10 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between gap-4 border-b border-border/10 pb-2 select-none">
+                    <span className="text-xs font-bold uppercase tracking-wider font-mono text-muted-foreground">Full Detailed Review Report</span>
+                    <span className="text-[10px] text-muted-foreground/45 font-mono">grounded review context</span>
+                  </div>
+                  <div className="text-xs leading-relaxed max-h-96 overflow-y-auto scrollbar-thin select-text">
+                    <Markdown content={healthReport.rawMarkdown} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-xs text-muted-foreground/30 font-mono py-24 select-none">
+                No report generated yet. Click Refresh to run analysis.
+              </div>
+            )}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-3 text-muted-foreground/40 font-mono">
-            <Terminal className="size-12 text-muted-foreground/15" />
-            <div className="text-xs font-bold text-foreground/40">No File Selected</div>
-            <div className="text-[10px] max-w-xs leading-relaxed">
-              Open any file from the repository sidebar or click an AI response citation to view content.
-            </div>
-          </div>
-        )}
-
-        {/* Floating Selection explanation side panel inside Code Viewer */}
-        {showExplainPanel && (
-          <div className="w-80 lg:w-[350px] border-l border-border/20 bg-[#0E1220] flex flex-col min-h-0 select-text shrink-0 shadow-2xl relative z-20">
-            <div className="p-3.5 bg-[#161D30]/60 border-b border-border/15 flex items-center justify-between shrink-0 font-mono text-xs select-none">
-              <span className="font-extrabold text-foreground tracking-wider uppercase">Selection Review</span>
-              <button 
-                onClick={() => setShowExplainPanel(false)} 
-                className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-bold font-mono"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin select-text">
-              <div className="bg-[#0A0D14]/80 p-2.5 rounded-xl border border-border/10 select-text">
-                <div className="font-mono text-[9px] text-muted-foreground uppercase font-bold tracking-wider mb-1 select-none">
-                  {explainFilePath.split("/").pop()} ({explainLines.start}-{explainLines.end})
-                </div>
-                <pre className="font-mono text-[9px] text-foreground/80 overflow-x-auto max-h-24 truncate whitespace-pre-wrap select-text">
-                  {explainSelectedText}
-                </pre>
-              </div>
-
-              <div className="text-xs leading-relaxed select-text">
-                {isExplaining && !explainAnswer ? (
-                  <div className="flex items-center gap-2 text-primary font-mono text-[10px] select-none py-12 justify-center">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Analyzing selection...</span>
+          /* Code Viewer layout */
+          <div className="flex-1 flex flex-row min-h-0 overflow-hidden relative">
+            {selectedFilePath ? (
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+                <div className="px-4 py-3 bg-[#111622]/60 border-b border-border/15 flex items-center justify-between gap-4 select-none shrink-0 font-mono text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 font-mono text-foreground font-semibold">
+                    <FileCode className="size-4 text-primary" />
+                    {selectedFilePath.split("/").pop()}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-muted-foreground/45 truncate max-w-xs">{selectedFilePath}</span>
+                    {fileContents[selectedFilePath] && (
+                      <button
+                        onClick={() => handleCopyCode(fileContents[selectedFilePath] || "")}
+                        className="hover:text-foreground flex items-center gap-1 transition-all cursor-pointer font-mono"
+                      >
+                        {copiedCode ? (
+                          <>
+                            <Check className="size-3.5 text-emerald-400" />
+                            <span className="text-[10px] text-emerald-400">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="size-3.5" />
+                            <span className="text-[10px]">Copy</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
-                ) : (
-                  <Markdown content={explainAnswer} />
-                )}
-              </div>
-            </div>
+                </div>
 
-            <div className="p-3 border-t border-border/10 bg-[#0F1424]/90 space-y-2 shrink-0 select-none">
-              <div className="relative bg-[#111622] border border-border/25 rounded-xl p-1.5 flex items-end gap-2">
-                <textarea
-                  rows={1}
-                  value={explainFollowUp}
-                  onChange={(e) => setExplainFollowUp(e.target.value)}
-                  placeholder="Ask follow-up..."
-                  className="flex-1 bg-transparent border-none text-[10px] text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-1.5 px-2 max-h-[100px] leading-relaxed font-mono"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      handleExplainFollowUp()
-                    }
-                  }}
-                />
-                <Button
-                  onClick={handleExplainFollowUp}
-                  disabled={isExplaining || !explainFollowUp.trim()}
-                  className="bg-primary hover:bg-primary/95 text-white h-7 px-3 text-[10px] rounded-lg shrink-0 cursor-pointer"
+                <div 
+                  className="flex-1 overflow-auto p-4 select-text"
+                  onMouseUp={handleCodeAreaMouseUp}
                 >
-                  Ask
-                </Button>
-              </div>
+                  {isLoadingFile ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-2 font-mono text-xs text-muted-foreground">
+                      <Loader2 className="size-6 text-primary animate-spin" />
+                      <span>Fetching file content bytes...</span>
+                    </div>
+                  ) : fileContents[selectedFilePath] ? (
+                    <div className="flex font-mono text-[11px] text-[#E2E8F0] min-w-max select-text">
+                      <div className="text-muted-foreground/30 text-right pr-4 border-r border-border/10 select-none min-w-8 font-mono">
+                        {fileContents[selectedFilePath].split("\n").map((_, lineIdx) => (
+                          <div key={lineIdx} className="min-h-6 flex items-center justify-end font-mono">
+                            {lineIdx + 1}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex-1 pl-4 font-mono select-text">
+                        {fileContents[selectedFilePath].split("\n").map((lineContent, lineIdx) => {
+                          const lineNumber = lineIdx + 1
+                          const isHighlighted =
+                            highlightedLines &&
+                            lineNumber >= highlightedLines.start &&
+                            lineNumber <= highlightedLines.end
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(explainAnswer)
-                    toast.success("Copied to clipboard.")
-                  }}
-                  disabled={!explainAnswer}
-                  variant="outline"
-                  className="h-7 text-[9px] font-mono hover:bg-[#1A233C]/20 border-border/15 shrink-0 cursor-pointer"
-                >
-                  Copy
-                </Button>
-                <Button
-                  onClick={handleOpenInChat}
-                  disabled={!explainAnswer}
-                  className="h-7 text-[9px] font-mono bg-primary hover:bg-primary/95 shrink-0 cursor-pointer"
-                >
-                  Open in Chat
-                </Button>
+                          return (
+                            <div
+                              key={lineIdx}
+                              id={`line-${lineNumber}`}
+                              className={`min-h-6 flex items-center font-mono text-[11px] pl-2 pr-4 transition-all duration-300 select-text ${
+                                isHighlighted
+                                  ? "bg-amber-500/10 border-l-2 border-amber-400 text-amber-100 font-bold"
+                                  : "hover:bg-[#1A233C]/20"
+                              }`}
+                            >
+                              {lineContent || <span className="opacity-0"> </span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-muted-foreground/30 font-mono py-24 select-none">
+                      Empty File content
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-3 text-muted-foreground/40 font-mono">
+                <Terminal className="size-12 text-muted-foreground/15" />
+                <div className="text-xs font-bold text-foreground/40">No File Selected</div>
+                <div className="text-[10px] max-w-xs leading-relaxed">
+                  Open any file from the repository sidebar or click an AI response citation to view content.
+                </div>
+              </div>
+            )}
+
+            {/* Floating Selection explanation side panel inside Code Viewer */}
+            {showExplainPanel && (
+              <div className="w-80 lg:w-[350px] border-l border-border/20 bg-[#0E1220] flex flex-col min-h-0 select-text shrink-0 shadow-2xl relative z-20">
+                <div className="p-3.5 bg-[#161D30]/60 border-b border-border/15 flex items-center justify-between shrink-0 font-mono text-xs select-none">
+                  <span className="font-extrabold text-foreground tracking-wider uppercase">Selection Review</span>
+                  <button 
+                    onClick={() => setShowExplainPanel(false)} 
+                    className="text-muted-foreground hover:text-foreground cursor-pointer text-xs font-bold font-mono"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin select-text">
+                  <div className="bg-[#0A0D14]/80 p-2.5 rounded-xl border border-border/10 select-text">
+                    <div className="font-mono text-[9px] text-muted-foreground uppercase font-bold tracking-wider mb-1 select-none">
+                      {explainFilePath.split("/").pop()} ({explainLines.start}-{explainLines.end})
+                    </div>
+                    <pre className="font-mono text-[9px] text-foreground/80 overflow-x-auto max-h-24 truncate whitespace-pre-wrap select-text">
+                      {explainSelectedText}
+                    </pre>
+                  </div>
+
+                  <div className="text-xs leading-relaxed select-text">
+                    {isExplaining && !explainAnswer ? (
+                      <div className="flex items-center gap-2 text-primary font-mono text-[10px] select-none py-12 justify-center">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        <span>Analyzing selection...</span>
+                      </div>
+                    ) : (
+                      <Markdown content={explainAnswer} />
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 border-t border-border/10 bg-[#0F1424]/90 space-y-2 shrink-0 select-none">
+                  <div className="relative bg-[#111622] border border-border/25 rounded-xl p-1.5 flex items-end gap-2">
+                    <textarea
+                      rows={1}
+                      value={explainFollowUp}
+                      onChange={(e) => setExplainFollowUp(e.target.value)}
+                      placeholder="Ask follow-up..."
+                      className="flex-1 bg-transparent border-none text-[10px] text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-1.5 px-2 max-h-[100px] leading-relaxed font-mono"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault()
+                          handleExplainFollowUp()
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={handleExplainFollowUp}
+                      disabled={isExplaining || !explainFollowUp.trim()}
+                      className="bg-primary hover:bg-primary/95 text-white h-7 px-3 text-[10px] rounded-lg shrink-0 cursor-pointer"
+                    >
+                      Ask
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Button
+                      onClick={() => {
+                        navigator.clipboard.writeText(explainAnswer)
+                        toast.success("Copied to clipboard.")
+                      }}
+                      disabled={!explainAnswer}
+                      variant="outline"
+                      className="h-7 text-[9px] font-mono hover:bg-[#1A233C]/20 border-border/15 shrink-0 cursor-pointer text-foreground"
+                    >
+                      Copy
+                    </Button>
+                    <Button
+                      onClick={handleOpenInChat}
+                      disabled={!explainAnswer}
+                      className="h-7 text-[9px] font-mono bg-primary hover:bg-primary/95 shrink-0 cursor-pointer text-foreground"
+                    >
+                      Open in Chat
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

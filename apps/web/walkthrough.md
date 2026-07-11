@@ -1,56 +1,54 @@
-# Walkthrough - Sprint 4.9 Explain Selected Code
+# Walkthrough - Sprint 5.0 AI Repository Health Dashboard
 
-The repository viewer now enables interactive code selection, displaying a context-aware floating toolbar with options to Explain, Summarize, Find Bugs, Optimize, or audit Security. Detailed reviews open in a dedicated side panel next to the Code Viewer, leaving main chat history unaffected.
+Every connected repository codebase now has an AI-generated health scorecard. A dedicated "Repository Health" view renders category assessments, progress indicators, maturity levels, strengths/weaknesses grids, and recommendations.
 
 ## Files Created / Modified
-- **Explain Controller** ([explain.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/explain.controller.ts)):
-  - Created prompt builders to parse target files, starting/ending line boundaries, and highlighted code snippets.
-  - Formatted generated report templates containing sections: Overview, Purpose, How It Works, Dependencies, Possible Improvements, Potential Bugs, and Best Practices.
-- **Explain Router** ([explain.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/explain.routes.ts)):
-  - Mounted explain-selection paths securely behind Clerk authenticator filters.
-- **REST Bootstrap Server** ([index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Registered `POST /api/v1/explain-selection` endpoints globally.
+- **Repository Health Service** ([repository-health.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-health.service.ts)):
+  - Built score aggregation services recycling prompt logic definitions inside `RepositoryChatService`.
+  - Configured JSON caching buffers (`health_report.json`) to persist scores for instant returns.
+  - Coded robust regex mapping functions converting markdown lists to structured scorecard properties.
+- **Health Controller** ([health.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/health.controller.ts)):
+  - Handled database ownership verification checks and refresh requests.
+- **Repository Router** ([repository.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/repository.routes.ts)):
+  - Registered `GET /api/v1/repositories/:id/health`.
 - **Chat Workspace Page** ([page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
-  - Added mouse selection handlers over the code lines workspace view to retrieve absolute selection ranges.
-  - Developed the Floating Selection Toolbar popping up at mouse coordinates.
-  - Implemented the Selection Review side drawer overlaying next to the file viewer, with Copy actions, Open in Chat imports, and custom Follow-up inputs.
+  - Designed the Repository Health layout panels, scorecard progress bars, and estimated maturity badges.
+  - Linked export buttons for Markdown format file downloads and print-friendly PDF stylesheet hooks.
 
 ---
 
-## Interactive Code Selection Flow
+## AI Health Report Pipeline
 
 ```mermaid
 graph TD
-    UserSelect["User highlights code block inside Viewer"]
-    MouseCoordinates["Resolve anchor/focus line elements & mouse coordinates"]
-    ShowToolbar["Show absolute Floating Toolbar: Explain, Summarize, Optimize, etc."]
-    ClickAction["User triggers action option"]
-    RequestBackend["POST /api/v1/explain-selection"]
-    OpenPanel["Open Docked Side Panel beside Code Viewer"]
-    StreamAnswer["Markdown format response display: Overview, Purpose, Improvements"]
-    OpenInChat["Open in Chat: Import selection code block + assistant response context"]
+    UserRequest["GET /api/v1/repositories/:id/health"]
+    CacheCheck{"Has cached report file?"}
+    ReturnCache["Return stored health_report.json"]
+    RunAnalysis["Query RepositoryChatService.chat()"]
+    ParseMarkdown["Regex match scores, lists, & maturity text"]
+    WriteCache["Save health_report.json to storage/repositories/:id/"]
+    EmitJSON["Respond structured JSON to Dashboard"]
 
-    UserSelect --> MouseCoordinates
-    MouseCoordinates --> ShowToolbar
-    ShowToolbar --> ClickAction
-    ClickAction --> RequestBackend
-    RequestBackend --> OpenPanel
-    OpenPanel --> StreamAnswer
-    StreamAnswer --> OpenInChat
+    UserRequest --> CacheCheck
+    CacheCheck -- Yes --> ReturnCache
+    CacheCheck -- No / Refresh --> RunAnalysis
+    RunAnalysis --> ParseMarkdown
+    ParseMarkdown --> WriteCache
+    WriteCache --> EmitJSON
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Text Selection listener**:
-   - Go to `/dashboard/repository/REPO_ID/chat`.
-   - Highlight any block of code inside the center Code Viewer panel.
-   - Verify that the floating options toolbar immediately appears above the highlighted text.
-2. **Verify Action review & Custom Prompt layouts**:
-   - Click `"✨ Explain"` on the floating toolbar.
-   - Confirm that the docked "Selection Review" panel slides open on the right of the Code Viewer.
-   - Verify that the analysis sections (Overview, Purpose, How It Works, Dependencies, Improvements, Bugs, Best Practices) are rendered.
-3. **Verify Side Panel features**:
-   - Verify follow-up questions inside the Side Panel input box.
-   - Click "Open in Chat" and verify that this specific code block and explanation are successfully imported into your primary Grounded Chat feed on the right column.
+1. **Verify Health Dashboard Layout**:
+   - Open `/dashboard/repository/REPO_ID/chat`.
+   - Click the **📊 Repository Health** tab at the top of the Center Panel.
+   - Verify category assessments for Architecture, Maintainability, Readability, Security, Performance, Documentation, Testing, and Scalability.
+2. **Verify Strengths, Weaknesses & Recommendations**:
+   - Confirm bullet lists for Core Strengths and Code Weaknesses display correctly.
+   - Verify the Top 5 Engineering Recommendations, Quick Wins, and Long-Term Improvements lists.
+3. **Verify Refresh & Exports**:
+   - Click **🔄 Refresh** to regenerate the AI review.
+   - Click **📝 MD** to download the raw markdown report.
+   - Click **📄 PDF** to trigger the browser printing dialog (verify print preview is cleanly styled).
