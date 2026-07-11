@@ -15,6 +15,7 @@ import jobRouter from "./routes/job.routes";
 import devRouter from "./routes/dev.routes";
 import contactRouter from "./routes/contact.routes";
 import searchRouter from "./routes/search.routes";
+import chatRouter from "./routes/chat.routes";
 import "./workers/repository.worker";
 
 const app = express();
@@ -39,6 +40,7 @@ app.use("/api/v1/jobs", jobRouter);
 app.use("/api/v1/dev", devRouter);
 app.use("/api/v1/contact", contactRouter);
 app.use("/api/v1/search", searchRouter);
+app.use("/api/v1/chat", chatRouter);
 
 // Health Check Endpoints
 app.get("/health", async (req, res) => {

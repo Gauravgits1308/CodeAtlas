@@ -1,38 +1,45 @@
-# Walkthrough - Milestone 4.1 Semantic Search (RAG Foundation)
+# Walkthrough - Milestone 4.2 AI Repository Chat (RAG)
 
-The foundational semantic vector search system has been successfully implemented across the repository, service, and controller layers, exposing a new REST API endpoint `/api/v1/search`.
+Retrieval-Augmented Generation (RAG) is now fully integrated inside the backend codebase under route `POST /api/v1/chat`.
 
 ## Files Created / Modified
-- **Search Repository** ([apps/api/src/repositories/search.repository.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/repositories/search.repository.ts)):
-  - Implemented pgvector raw parameterized queries to calculate cosine similarity similarity ranks (`1 - (e.embedding <=> CAST(vector AS vector))`).
-- **Repository Search Service** ([apps/api/src/services/repository-search.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-search.service.ts)):
-  - Integrates `EmbeddingService` to encode the raw string query and filters database records matching `COMPLETED` indexed repositories.
-- **Search Controller** ([apps/api/src/controllers/search.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/search.controller.ts)):
-  - Performs incoming request schema validation (rejecting empty queries, missing repository IDs, and invalid limit numbers).
-- **Search Routes** ([apps/api/src/routes/search.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/search.routes.ts)):
-  - Declares the REST route `POST /` mapped to the search handler protected by Clerk session checks.
+- **Repository Chat Service** ([apps/api/src/services/repository-chat.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-chat.service.ts)):
+  - Implements the complete chat logical pipeline.
+  - Generates query vectors, fetches top-ranked matching chunks (via `RepositorySearchService`), builds grounded system prompts, queries OpenRouter's completion APIs, and maps sources citation.
+  - Implemented custom fallback mapping normalization to protect against context hallucinations.
+- **Chat Controller** ([apps/api/src/controllers/chat.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/chat.controller.ts)):
+  - Performs schema validation rejecting missing repositories, empty question prompts, or questions longer than 3000 characters.
+- **Chat Routes** ([apps/api/src/routes/chat.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/chat.routes.ts)):
+  - Exposes `POST /` mapped to `ChatController.chat` secured behind standard Clerk authentication layers.
 - **App Main Bootstrap** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Registered `/api/v1/search` route endpoints.
+  - Registered `/api/v1/chat` route endpoints.
 
 ---
 
-## Semantic Search Pipeline
+## AI Chat (RAG) Architecture
 
 ```mermaid
 graph TD
-    Client["Client POST Request /api/v1/search"]
-    Controller["SearchController.search()"]
-    EmbedService["EmbeddingService.generateEmbedding()"]
-    SearchRepo["SearchRepository.searchSimilarChunks()"]
-    pgvector["pgvector Cosine Distance Query (<=>)"]
-    RankedResults["Ranked JSON Code Chunks array"]
+    Client["Client POST Request /api/v1/chat"]
+    Controller["ChatController.chat()"]
+    SearchService["RepositorySearchService.search()"]
+    Embed["EmbeddingService.generateEmbedding()"]
+    pgvector["pgvector Cosine Distance Search"]
+    ChatService["RepositoryChatService.chat()"]
+    OpenRouter["OpenRouter completions.create()"]
+    Response["Structured Grounded Answer + Source Citations"]
 
     Client --> Controller
-    Controller -- "1. Validate query & limit" --> EmbedService
-    EmbedService -- "2. Generate query vector" --> SearchRepo
-    SearchRepo -- "3. Query PostgreSQL e.embedding" --> pgvector
-    pgvector -- "4. Sort by similarity DESC" --> RankedResults
-    RankedResults --> Client
+    Controller -- "1. Validation" --> ChatService
+    ChatService --> SearchService
+    SearchService --> Embed
+    Embed --> pgvector
+    pgvector -- "Top 10 chunks" --> SearchService
+    SearchService -- "Ranked chunks context" --> ChatService
+    ChatService -- "Prompt formatting" --> OpenRouter
+    OpenRouter -- "200 OK LLM Response" --> ChatService
+    ChatService -- "Hallucination fallback validation" --> Response
+    Response --> Client
 ```
 
 ---
@@ -40,23 +47,23 @@ graph TD
 ## Verification & Testing Instructions
 
 1. **Verify Endpoint Response structure**:
-   - Make a search query request using any authenticated client session:
+   - Issue a chat query request against the Express endpoint:
      ```bash
-     curl -X POST http://localhost:5001/api/v1/search \
+     curl -X POST http://localhost:5001/api/v1/chat \
        -H "Content-Type: application/json" \
-       -d '{"repositoryId": "REPO_UUID", "query": "database connection", "limit": 5}'
+       -d '{"repositoryId": "REPO_UUID", "question": "How is authentication implemented?"}'
      ```
-   - Check that the returned JSON matches:
+   - Verify that the response includes grounded text matching citation lists:
      ```json
      {
        "success": true,
-       "results": [
+       "answer": "Authentication is implemented using Clerk inside index.ts...",
+       "sources": [
          {
-           "filePath": "src/database.ts",
+           "filePath": "apps/api/src/index.ts",
            "startLine": 1,
-           "endLine": 12,
-           "content": "const prisma = ...",
-           "similarity": 0.892
+           "endLine": 35,
+           "similarity": 0.895
          }
        ]
      }
