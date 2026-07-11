@@ -1,42 +1,55 @@
-# Walkthrough - Milestone 3.3.5 Navigation Offset & Document Anchor Fixes
+# Walkthrough - Milestone 3.3.6 Integration of Resend Email Provider
 
-All marketing sections on the homepage have been fully aligned, offset spacing has been added to sections to handle sticky header heights, and smooth scroll intercept handlers have been successfully configured on both desktop and mobile layouts.
+The logger-only simulated email dispatching has been upgraded to support the official **Resend Node SDK**. CodeAtlas retains a highly modular provider architecture that easily permits switching between providers.
+
+## Files Created
+- **Email Providers** ([apps/api/src/services/email/providers/](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email/providers/)):
+  - [EmailProvider.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email/providers/EmailProvider.ts): Defines the contract interface for dispatching emails.
+  - [LoggerEmailProvider.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email/providers/LoggerEmailProvider.ts): Handles fallback, simulated logger-only email output logs.
+  - [ResendEmailProvider.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email/providers/ResendEmailProvider.ts): Communicates with Resend API endpoints to dispatch emails.
+  - [provider.factory.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email/providers/provider.factory.ts): Strategy selector deciding between Resend or Logger fallback strategies.
 
 ## Files Modified
-- **Section Layout Component** ([apps/web/src/components/common/Section.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/common/Section.tsx)):
-  - Added global `scroll-mt-20` (scroll margin top offset) to prevent any section header from being cropped or hidden behind the sticky navbar.
-- **Navbar Layout Component** ([apps/web/src/components/layout/Navbar.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/layout/Navbar.tsx)):
-  - Implemented a `handleNavClick` intercept handler for anchor jump tags starting with `/#` or `#`.
-  - When matching current pathname route contexts, navigation events trigger native `element.scrollIntoView({ behavior: 'smooth' })` commands instead of hard browser page jumps.
-- **FAQ Page Component** ([apps/web/src/features/landing/components/FAQ.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/landing/components/FAQ.tsx)):
-  - Configured Section element with `id="pricing"` to receive pricing target scrolls.
+- **Configuration Parameters** ([apps/api/src/config/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/config/index.ts)):
+  - Removed old SMTP options.
+  - Mapped `RESEND_API_KEY` to `resendApiKey` and `EMAIL_FROM` to `emailFrom`.
+- **Email Service** ([apps/api/src/services/email.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/email.service.ts)):
+  - Integrated the factory instance by default and refactored sending targets to use `emailFrom`.
 
 ---
 
-## Smooth Scroll Layout Logic
+## Strategy Selection Architecture
 
 ```mermaid
 graph TD
-    Navbar["Navbar Component (Navbar.tsx)"]
-    ClickEvent["User click link (href)"]
-    CheckPath{"Is link anchor & current path '/'?"}
-    DirectJump["Execute standard Next.js routing"]
-    SmoothScroll["Find element and scrollIntoView({ behavior: 'smooth' })"]
-    TargetEl["Target Section Element"]
+    Client["Contact Service (contact.service.ts)"]
+    Service["EmailService (email.service.ts)"]
+    Factory["provider.factory.ts (createEmailProvider)"]
+    CheckKey{"Does RESEND_API_KEY exist?"}
+    ResendProvider["ResendEmailProvider"]
+    LoggerProvider["LoggerEmailProvider"]
+    ResendAPI["Resend API Endpoint"]
+    LoggerConsole["Winston Console Log Output"]
 
-    Navbar --> ClickEvent
-    ClickEvent --> CheckPath
-    CheckPath -- "No (e.g. from /dashboard)" --> DirectJump
-    CheckPath -- "Yes" --> SmoothScroll
-    SmoothScroll -- "Target is offset by scroll-mt-20" --> TargetEl
+    Client -- "sendContactEmail()" --> Service
+    Service -- "Instantiate default" --> Factory
+    Factory --> CheckKey
+    CheckKey -- "Yes" --> ResendProvider
+    CheckKey -- "No" --> LoggerProvider
+    ResendProvider -- "sendEmail()" --> ResendAPI
+    LoggerProvider -- "sendEmail()" --> LoggerConsole
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Smooth Scroll Triggers**:
-   - Access `http://localhost:3000/`.
-   - Scroll to the bottom of the page, then click **Home**, **Features**, **About**, **Documentation**, **Pricing**, **Contact** in the navbar.
-   - Confirm that the viewport transitions smoothly to the designated section.
-   - Verify that the title of the section is fully visible and offset correctly below the sticky header.
+1. **Verify Resend Factory fallback**:
+   - Start the workspace without a `RESEND_API_KEY` configuration.
+   - Submit a query on the contact form.
+   - Confirm that the backend log prints the formatted contact email submission.
+
+2. **Verify Resend production delivery**:
+   - Provide a valid `RESEND_API_KEY`, `EMAIL_FROM`, and `CONTACT_EMAIL` inside your `.env` configuration.
+   - Trigger contact form submission.
+   - Verify that Resend dispatches the request successfully and you receive the query details in your `gaurav.init13@gmail.com` inbox.

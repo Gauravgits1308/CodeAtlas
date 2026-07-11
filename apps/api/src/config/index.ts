@@ -23,11 +23,8 @@ export const config = {
   openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "",
   openrouterChatModel: process.env.OPENROUTER_CHAT_MODEL || "",
   contactEmail: process.env.CONTACT_EMAIL || "gaurav.init13@gmail.com",
-  smtpHost: process.env.SMTP_HOST || "",
-  smtpPort: parseInt(process.env.SMTP_PORT || "587", 10),
-  smtpUser: process.env.SMTP_USER || "",
-  smtpPass: process.env.SMTP_PASS || "",
-  smtpSecure: process.env.SMTP_SECURE === "true",
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  emailFrom: process.env.EMAIL_FROM || "CodeAtlas <onboarding@resend.dev>",
 }
 
 // Warn about missing database connections
