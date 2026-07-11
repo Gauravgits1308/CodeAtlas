@@ -2,15 +2,84 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../database";
 import { sseService } from "./sse.service";
 import { logger } from "../utils/logger";
+import { repositoryQueue } from "../queue/repository.queue";
 
 export class ProgressService {
   /**
    * Retrieves the current processing status for the target repository.
    */
   async getProgress(repositoryId: string) {
-    const status = await prisma.repositoryProcessingStatus.findUnique({
+    let status = await prisma.repositoryProcessingStatus.findUnique({
       where: { repositoryId },
     });
+
+    const repo = await prisma.repository.findUnique({
+      where: { id: repositoryId },
+    });
+
+    const startedTime = status?.startedAt 
+      ? new Date(status.startedAt).getTime() 
+      : (repo ? new Date(repo.createdAt).getTime() : 0);
+
+    const isCurrentlyQueued = !status || status.currentStage === "QUEUED";
+
+    if (isCurrentlyQueued && startedTime > 0 && (Date.now() - startedTime > 10000) && (!status || !status.errorMessage)) {
+      // It has been queued for more than 10 seconds. Check queue details!
+      let reason = "Worker failed to consume processing task.";
+      let isRedisOffline = false;
+ 
+      // 1. Verify Redis Connection Health
+      try {
+        const client = await repositoryQueue.client;
+        const redisPing = await (client as unknown as { ping: () => Promise<string> }).ping();
+        if (redisPing !== "PONG") {
+          isRedisOffline = true;
+          reason = "Redis connection is unhealthy or unresponsive.";
+        }
+      } catch (redisErr: unknown) {
+        const error = redisErr as Error;
+        isRedisOffline = true;
+        reason = `Redis connection failure: ${error.message}`;
+      }
+ 
+      if (!isRedisOffline) {
+        // 2. Verify Worker health
+        try {
+          const workers = await repositoryQueue.getWorkers();
+          if (workers.length === 0) {
+            reason = "Repository worker is offline or not actively consuming jobs.";
+          } else {
+            // Check if job exists in queue
+            const job = await repositoryQueue.getJob(repositoryId);
+            if (!job) {
+              reason = "Job was not successfully enqueued or was lost in BullMQ queue.";
+            } else {
+              const state = await job.getState();
+              reason = `Job remains in '${state}' state. Worker might be overwhelmed or busy processing other tasks.`;
+            }
+          }
+        } catch (queueErr: unknown) {
+          const error = queueErr as Error;
+          reason = `Failed to query BullMQ queue details: ${error.message}`;
+        }
+      }
+
+      logger.warn(`Job remains in Queued stage for more than 10s. Reason: ${reason} (Repository ID: ${repositoryId})`);
+
+      // Update progress record in database to FAILED with the reason
+      status = await this.updateProgress(repositoryId, {
+        currentStage: "QUEUED",
+        stageProgress: 0.0,
+        errorMessage: `Repository processing timeout: remains queued for >10 seconds. Reason: ${reason}. Please retry sync.`,
+      });
+      
+      // Update repository database status to FAILED as well
+      await prisma.repository.update({
+        where: { id: repositoryId },
+        data: { status: "FAILED" },
+      });
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: FAILED`);
+    }
 
     if (!status) {
       // Return a default queued payload if no status record has been written yet

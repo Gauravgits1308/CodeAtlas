@@ -1,4 +1,6 @@
 import { RepositoryRepository } from "../repositories/repository.repository";
+import * as fs from "fs";
+import * as path from "path";
 import { CodeChunkRepository } from "../repositories/code-chunk.repository";
 import { ChunkEmbeddingRepository } from "../repositories/chunk-embedding.repository";
 import { FileExtractionService } from "./file-extraction.service";
@@ -67,7 +69,8 @@ export class RepositoryProcessingService {
       throw new AppError("Repository not found.", 404);
     }
 
-    if (repo.status !== "COMPLETED" && repo.status !== "FAILED" && repo.status !== "PROCESSING" && repo.status !== "QUEUED") {
+    const repoPath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+    if (!fs.existsSync(repoPath)) {
       throw new AppError(
         "Repository codebase must be cloned successfully before triggering indexing.",
         400
@@ -98,7 +101,9 @@ export class RepositoryProcessingService {
       /**
        * Extract supported source files.
        */
+      logger.info(`[Repository: ${repo.id}] File extraction started`);
       const files = this.fileExtractionService.extractFiles(repo.id);
+      logger.info(`[Repository: ${repo.id}] File extraction completed: Discovered ${files.length} files`);
 
       await progressService.updateProgress(repo.id, {
         currentStage: "Processing Files",
@@ -119,6 +124,7 @@ export class RepositoryProcessingService {
         totalFiles: files.length,
       });
 
+      logger.info(`[Repository: ${repo.id}] Chunking started for ${files.length} files`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fileChunksMap: Array<{ file: typeof files[0]; chunks: any[] }> = [];
       let estimatedTotalChunks = 0;
@@ -132,6 +138,7 @@ export class RepositoryProcessingService {
         fileChunksMap.push({ file, chunks });
         estimatedTotalChunks += chunks.length;
       }
+      logger.info(`[Repository: ${repo.id}] Chunking completed: Formulated ${estimatedTotalChunks} code chunks`);
 
       await progressService.updateProgress(repo.id, {
         currentStage: "Chunking Code",
@@ -148,6 +155,7 @@ export class RepositoryProcessingService {
       /**
        * Process every chunk map and generate embeddings.
        */
+      logger.info(`[Repository: ${repo.id}] Embedding generation started for ${estimatedTotalChunks} chunks`);
       for (const item of fileChunksMap) {
         processedFiles++;
         
@@ -200,6 +208,7 @@ export class RepositoryProcessingService {
           });
         }
       }
+      logger.info(`[Repository: ${repo.id}] Embedding generation completed: Generated ${embeddingsGenerated} embeddings`);
 
       await this.repositoryRepository.updateStatus(
         repo.id,

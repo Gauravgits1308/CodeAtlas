@@ -34,6 +34,7 @@ export class RepositoryJobService {
     });
 
     // Enqueue job using repositoryId as deduplication key
+    logger.info(`[Repository: ${repositoryId}] Job created: Enqueuing job with data: { repositoryId, userId }`);
     const job = await repositoryQueue.add(
       `process-${repositoryId}`,
       { repositoryId, userId },
@@ -44,6 +45,7 @@ export class RepositoryJobService {
       throw new AppError("Failed to enqueue processing job.", 500);
     }
 
+    logger.info(`[Repository: ${repositoryId}] Job queued: Enqueued job ID ${job.id} inside BullMQ`);
     logger.info(`Job queued: Enqueued job ID ${job.id} for repository ${repositoryId}`);
 
     return job.id;

@@ -15,10 +15,12 @@ export const repositoryWorker = new Worker(
   async (job: Job) => {
     const { repositoryId, userId } = job.data;
 
+    logger.info(`[Repository: ${repositoryId}] Worker picked job: Job ID ${job.id} picked up for processing`);
     logger.info(`Job started: Job ID ${job.id} for repository ${repositoryId}`);
 
     try {
       // 1. CLONING stage
+      logger.info(`[Repository: ${repositoryId}] Clone started`);
       logger.info(`[Job ${job.id}] Clone started for repository ${repositoryId}`);
       await progressService.updateProgress(repositoryId, {
         currentStage: "Cloning Repository",
@@ -26,7 +28,9 @@ export const repositoryWorker = new Worker(
         currentMessage: "Cloning source files from GitHub to local file server...",
       });
       await repositoryRepository.updateStatus(repositoryId, "CLONING");
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: CLONING`);
       await repositoryService.cloneRepository(repositoryId, userId);
+      logger.info(`[Repository: ${repositoryId}] Clone completed`);
       logger.info(`[Job ${job.id}] Clone completed for repository ${repositoryId}`);
 
       // 2. METRICS ANALYSIS stage
@@ -37,7 +41,9 @@ export const repositoryWorker = new Worker(
         currentMessage: "Calculating codebase metrics, LOC, languages, and directory structures...",
       });
       await repositoryRepository.updateStatus(repositoryId, "ANALYZING");
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: ANALYZING`);
       await repositoryService.analyzeRepository(repositoryId, userId);
+      logger.info(`[Repository: ${repositoryId}] Metrics calculation completed`);
       logger.info(`[Job ${job.id}] Analysis completed for repository ${repositoryId}`);
 
       // 3. INDEXING (Extracting, Chunking, Embeddings) stage
@@ -69,6 +75,8 @@ export const repositoryWorker = new Worker(
         finishedAt: new Date(),
       });
       await repositoryRepository.updateStatus(repositoryId, "COMPLETED");
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: COMPLETED`);
+      logger.info(`[Repository: ${repositoryId}] Repository ready`);
       logger.info(`Job completed: Job ID ${job.id} successfully processed repository ${repositoryId}`);
     } catch (error: unknown) {
       const err = error as Error;
@@ -78,6 +86,7 @@ export const repositoryWorker = new Worker(
         errorMessage: err.message || "Unknown error occurred during processing pipeline.",
       });
       await repositoryRepository.updateStatus(repositoryId, "FAILED");
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: FAILED`);
       throw err;
     }
   },

@@ -1,6 +1,8 @@
 import { RepositoryRepository, CreateRepositoryInput } from "../repositories/repository.repository";
 import { Repository } from "@prisma/client";
 import { AppError } from "../utils/errors";
+import * as fs from "fs";
+import * as path from "path";
 import { CloneService } from "./clone.service";
 import { GitService } from "./git.service";
 import { CodeMetricRepository } from "../repositories/code-metric.repository";
@@ -136,7 +138,8 @@ export class RepositoryService {
       throw new AppError("Forbidden: You do not own this repository.", 403);
     }
 
-    if (repo.status !== "COMPLETED" && repo.status !== "FAILED") {
+    const storagePath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+    if (!fs.existsSync(storagePath)) {
       throw new AppError("Repository codebase must be cloned successfully before triggering analysis.", 400);
     }
 
