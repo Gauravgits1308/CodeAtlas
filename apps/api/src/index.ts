@@ -22,7 +22,6 @@ import explainSelectionRouter from "./routes/explain-selection.routes";
 import documentationRouter from "./routes/documentation.routes";
 import diagramRouter from "./routes/diagram.routes";
 import progressRouter from "./routes/progress.routes";
-import "./workers/repository.worker";
 
 const app = express();
 

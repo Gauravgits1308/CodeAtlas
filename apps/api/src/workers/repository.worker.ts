@@ -1,4 +1,10 @@
 console.log("🚀 Repository worker booted");
+console.log(
+  "Worker PID:",
+  process.pid,
+  "Started:",
+  new Date().toISOString()
+);
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "../queue/queue";
 import { QUEUE_NAME } from "../queue/repository.queue";
