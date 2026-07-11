@@ -162,8 +162,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Layout Tabs on Mobile viewports: 'chat' | 'explorer' | 'code'
   const [activeTab, setActiveTab] = React.useState<"chat" | "explorer" | "code">("chat")
 
-  // Toggle center panel views: 'code' | 'health' | 'docs'
-  const [centerView, setCenterView] = React.useState<"code" | "health" | "docs">("code")
+  // Toggle center panel views: 'code' | 'health' | 'docs' | 'diagram'
+  const [centerView, setCenterView] = React.useState<"code" | "health" | "docs" | "diagram">("code")
 
   const [repoDetails, setRepoDetails] = React.useState<RepositoryDetails | null>(null)
   const [messages, setMessages] = React.useState<Message[]>([])
@@ -253,6 +253,190 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     toast.success("Markdown documentation downloaded successfully.")
+  }
+
+  // AI Architecture Diagram States
+  const [diagramView, setDiagramView] = React.useState<"FOLDER_STRUCTURE" | "DEPENDENCY_GRAPH" | "SERVICE_GRAPH" | "API_FLOW" | "DATABASE_FLOW">("FOLDER_STRUCTURE")
+  const [mermaidCode, setMermaidCode] = React.useState("")
+  const [isGeneratingDiagram, setIsGeneratingDiagram] = React.useState(false)
+  const [renderedSvg, setRenderedSvg] = React.useState("")
+  const [zoomScale, setZoomScale] = React.useState(1.0)
+  const [panPosition, setPanPosition] = React.useState({ x: 0, y: 0 })
+  const [isDraggingCanvas, setIsDraggingCanvas] = React.useState(false)
+  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 })
+
+  const handleGenerateDiagram = async (force = false) => {
+    setIsGeneratingDiagram(true)
+    try {
+      const res = await api.get<{ success: boolean; mermaidCode: string }>(
+        `/repositories/${repositoryId}/diagrams?view=${diagramView}${force ? "&refresh=true" : ""}`
+      )
+      if (res.success) {
+        setMermaidCode(res.mermaidCode)
+        setZoomScale(1.0)
+        setPanPosition({ x: 0, y: 0 })
+        toast.success("AI Architecture Diagram compiled successfully.")
+      }
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to generate diagram.")
+    } finally {
+      setIsGeneratingDiagram(false)
+    }
+  }
+
+  // Load and render Mermaid client-side
+  React.useEffect(() => {
+    type MermaidInstance = {
+      render: (id: string, text: string) => Promise<{ svg: string }>;
+      initialize: (options: unknown) => void;
+    };
+    const renderDiagram = async () => {
+      if (!mermaidCode || centerView !== "diagram") return
+      const anyWindow = window as unknown as { mermaid?: MermaidInstance };
+      if (anyWindow.mermaid) {
+        try {
+          const id = `mermaid-svg-${Date.now()}`
+          const { svg } = await anyWindow.mermaid.render(id, mermaidCode)
+          setRenderedSvg(svg)
+        } catch (err) {
+          console.error("Mermaid compile failed:", err)
+        }
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      const scriptId = "mermaid-script"
+      let script = document.getElementById(scriptId) as HTMLScriptElement
+      if (!script) {
+        script = document.createElement("script")
+        script.id = scriptId
+        script.src = "https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"
+        script.async = true
+        script.onload = () => {
+          const anyWindow = window as unknown as { mermaid?: MermaidInstance };
+          if (anyWindow.mermaid) {
+            anyWindow.mermaid.initialize({
+              startOnLoad: false,
+              theme: "dark",
+              securityLevel: "loose",
+            })
+            renderDiagram()
+          }
+        }
+        document.body.appendChild(script)
+      } else {
+        renderDiagram()
+      }
+    }
+  }, [mermaidCode, centerView])
+
+  const findFilePathMatch = (nodeLabel: string): string | null => {
+    const allPaths: string[] = []
+    const traverse = (nodes: FileTreeNode[]) => {
+      nodes.forEach((node) => {
+        if (node.type === "file") {
+          allPaths.push(node.path)
+        } else if (node.children) {
+          traverse(node.children)
+        }
+      })
+    }
+    traverse(filesTree)
+
+    // Try exact matching
+    if (allPaths.includes(nodeLabel)) return nodeLabel
+
+    // Try base name match (e.g. nodeLabel = "index.ts")
+    const baseMatch = allPaths.find((p) => p.endsWith("/" + nodeLabel) || p === nodeLabel)
+    if (baseMatch) return baseMatch
+
+    // Try loose search
+    const cleanLabel = nodeLabel.toLowerCase().replace(/["']/g, "")
+    const looseMatch = allPaths.find(
+      (p) => p.toLowerCase().endsWith("/" + cleanLabel) || p.toLowerCase().includes(cleanLabel)
+    )
+    return looseMatch || null
+  }
+
+  const handleSvgClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    const nodeElement = target.closest(".node")
+    if (nodeElement) {
+      const labelElement = nodeElement.querySelector(".nodeLabel") || nodeElement.querySelector("text")
+      const labelText = labelElement?.textContent?.trim() || ""
+      if (labelText) {
+        const matchedPath = findFilePathMatch(labelText)
+        if (matchedPath) {
+          setSelectedFilePath(matchedPath)
+          setCenterView("code")
+          toast.success(`Opening file: ${matchedPath.split("/").pop()}`)
+        } else {
+          toast.error(`Could not locate codebase file matching node: "${labelText}"`)
+        }
+      }
+    }
+  }
+
+  const handleExportSVG = () => {
+    const blob = new Blob([renderedSvg], { type: "image/svg+xml" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${diagramView.toLowerCase()}_diagram.svg`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success("SVG diagram downloaded successfully.")
+  }
+
+  const handleExportMermaid = () => {
+    const blob = new Blob([mermaidCode], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${diagramView.toLowerCase()}_diagram.mermaid`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success("Mermaid source downloaded successfully.")
+  }
+
+  const handleExportPNG = () => {
+    const container = document.getElementById("mermaid-container")
+    const svgElement = container?.querySelector("svg")
+    if (!svgElement) return
+
+    const svgString = new XMLSerializer().serializeToString(svgElement)
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" })
+    const URL = window.URL || window.webkitURL || window
+    const blobURL = URL.createObjectURL(svgBlob)
+
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement("canvas")
+      canvas.width = svgElement.clientWidth * 2 || 1600
+      canvas.height = svgElement.clientHeight * 2 || 1200
+      const context = canvas.getContext("2d")
+      if (context) {
+        context.fillStyle = "#0D111F"
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const png = canvas.toDataURL("image/png")
+        const a = document.createElement("a")
+        a.href = png
+        a.download = `${diagramView.toLowerCase()}_diagram.png`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }
+      URL.revokeObjectURL(blobURL)
+    }
+    image.src = blobURL
+    toast.success("PNG export download triggered.")
   }
 
   const chatEndRef = React.useRef<HTMLDivElement>(null)
@@ -962,6 +1146,19 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
             >
               📝 AI Docs
             </button>
+            <button
+              onClick={() => {
+                setCenterView("diagram")
+                if (!mermaidCode) handleGenerateDiagram()
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                centerView === "diagram"
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+              }`}
+            >
+              📊 Diagram
+            </button>
           </div>
           
           {centerView === "health" && healthReport && (
@@ -1283,6 +1480,187 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                         <Markdown content={docContent} />
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* AI Diagram Panel Content area */}
+        {centerView === "diagram" && (
+          <div className="flex-1 flex min-h-0 divide-x divide-border/10 bg-[#080B12]">
+            {/* Options Pane (Left) */}
+            <div className="w-64 p-4 shrink-0 bg-[#0B0F1A]/80 flex flex-col justify-between font-mono select-none">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+                    Diagram View
+                  </label>
+                  <div className="space-y-1.5">
+                    {[
+                      { id: "FOLDER_STRUCTURE", label: "📁 Folder Structure" },
+                      { id: "DEPENDENCY_GRAPH", label: "🔗 Dependency Graph" },
+                      { id: "SERVICE_GRAPH", label: "⚙️ Service Graph" },
+                      { id: "API_FLOW", label: "🌐 API Flow" },
+                      { id: "DATABASE_FLOW", label: "🗄️ Database Flow" }
+                    ].map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => {
+                          setDiagramView(v.id as "FOLDER_STRUCTURE" | "DEPENDENCY_GRAPH" | "SERVICE_GRAPH" | "API_FLOW" | "DATABASE_FLOW")
+                          setMermaidCode("")
+                          setRenderedSvg("")
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition-all cursor-pointer border ${
+                          diagramView === v.id
+                            ? "bg-primary/10 text-primary border-primary/20 font-bold"
+                            : "text-muted-foreground border-transparent hover:text-foreground hover:bg-[#1A233C]/10"
+                        }`}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-border/10 pt-4 space-y-2">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                    Canvas Scale: {Math.round(zoomScale * 100)}%
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <Button
+                      onClick={() => setZoomScale((z) => Math.min(z + 0.15, 3.0))}
+                      variant="outline"
+                      className="h-7 text-[10px] border-border/15 shrink-0 text-foreground cursor-pointer"
+                    >
+                      ➕ In
+                    </Button>
+                    <Button
+                      onClick={() => setZoomScale((z) => Math.max(z - 0.15, 0.4))}
+                      variant="outline"
+                      className="h-7 text-[10px] border-border/15 shrink-0 text-foreground cursor-pointer"
+                    >
+                      ➖ Out
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setZoomScale(1.0)
+                        setPanPosition({ x: 0, y: 0 })
+                      }}
+                      variant="outline"
+                      className="h-7 text-[10px] border-border/15 shrink-0 text-foreground cursor-pointer font-bold"
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Button
+                  onClick={() => handleGenerateDiagram(false)}
+                  disabled={isGeneratingDiagram || !!mermaidCode}
+                  className="w-full bg-primary hover:bg-primary/95 text-white font-mono text-xs font-bold py-2 rounded-xl shrink-0 cursor-pointer"
+                >
+                  {isGeneratingDiagram ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin mr-2" />
+                      Loading...
+                    </>
+                  ) : mermaidCode ? (
+                    "Rendered"
+                  ) : (
+                    "✨ Generate Graph"
+                  )}
+                </Button>
+                <Button
+                  onClick={() => handleGenerateDiagram(true)}
+                  disabled={isGeneratingDiagram}
+                  variant="outline"
+                  className="w-full text-foreground border-border/15 font-mono text-xs font-bold py-2 rounded-xl shrink-0 cursor-pointer"
+                >
+                  🔄 Regenerate
+                </Button>
+              </div>
+            </div>
+
+            {/* Canvas Panel (Right) */}
+            <div className="flex-1 flex flex-col min-h-0 bg-[#0D111F] relative overflow-hidden">
+              {isGeneratingDiagram ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground/60 font-mono text-xs select-none">
+                  <Loader2 className="size-8 text-primary animate-spin" />
+                  <span>Analyzing codebase dependencies & rendering graph...</span>
+                </div>
+              ) : !renderedSvg ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-3 text-muted-foreground/40 font-mono">
+                  <Code className="size-12 text-muted-foreground/15" />
+                  <div className="text-xs font-bold text-foreground/40">Interactive Diagram Board</div>
+                  <div className="text-[10px] max-w-xs leading-relaxed">
+                    Select a diagram view layout on the left, then click Generate to construct an interactive vector schematic. Click on nodes to explore files.
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Actions Header Bar */}
+                  <div className="px-4 py-2 border-b border-border/10 bg-[#0A0D15]/40 flex items-center justify-between shrink-0 font-mono text-xs select-none">
+                    <span className="text-foreground/60 font-bold uppercase tracking-wider text-[10px]">
+                      {diagramView.replace("_", " ")}
+                    </span>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleExportMermaid}
+                        variant="outline"
+                        className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 text-foreground cursor-pointer"
+                      >
+                        Source Code
+                      </Button>
+                      <Button
+                        onClick={handleExportSVG}
+                        variant="outline"
+                        className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 text-foreground cursor-pointer"
+                      >
+                        SVG
+                      </Button>
+                      <Button
+                        onClick={handleExportPNG}
+                        variant="outline"
+                        className="h-7 px-2.5 text-[10px] font-mono border-border/15 shrink-0 text-foreground cursor-pointer"
+                      >
+                        PNG
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Interactive Board container */}
+                  <div
+                    id="mermaid-container"
+                    onMouseDown={(e) => {
+                      setIsDraggingCanvas(true)
+                      setDragStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y })
+                    }}
+                    onMouseMove={(e) => {
+                      if (isDraggingCanvas) {
+                        setPanPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+                      }
+                    }}
+                    onMouseUp={() => setIsDraggingCanvas(false)}
+                    onMouseLeave={() => setIsDraggingCanvas(false)}
+                    onClick={handleSvgClick}
+                    className={`flex-1 relative overflow-hidden select-none flex items-center justify-center p-6 ${
+                      isDraggingCanvas ? "cursor-grabbing" : "cursor-grab"
+                    }`}
+                  >
+                    <div
+                      style={{
+                        transform: `translate(${panPosition.x}px, ${panPosition.y}px) scale(${zoomScale})`,
+                        transformOrigin: "center center",
+                        transition: isDraggingCanvas ? "none" : "transform 0.15s ease-out",
+                      }}
+                      className="max-w-full max-h-full flex items-center justify-center text-foreground font-mono select-none"
+                      dangerouslySetInnerHTML={{ __html: renderedSvg }}
+                    />
                   </div>
                 </div>
               )}

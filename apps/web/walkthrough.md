@@ -1,43 +1,50 @@
-# Walkthrough - Sprint 5.1 AI Documentation Generator
+# Walkthrough - Sprint 5.3 AI Architecture Diagram Generator
 
-Implemented an interactive AI Documentation Workspace in the developer interface that automatically analyzes repository layouts and creates professional documentation with custom style tones.
+Implemented an interactive AI Architecture Diagram Workspace in the developer interface that automatically analyzes repository layouts and creates professional diagrams (Folder Structure, Dependency Graph, Service Graph, API Flow, Database Flow) rendered using a dynamic, interactive SVG canvas.
 
 ## Files Created / Modified
-- **Documentation Service** ([documentation.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/documentation.service.ts)):
-  - Built document type template routers for README, API Docs, Folder Structure, and Setup Guides.
-  - Added repository context mappings fetching project dependency lists (from `package.json`) and indexed structure details.
-  - Linked tone modifiers adjusting guidelines for Professional, Beginner, and Enterprise settings.
-- **Documentation Controller** ([documentation.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/documentation.controller.ts)):
-  - Validates query options (`type`, `tone`) and checks codebase permissions.
-- **Documentation Router** ([documentation.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/documentation.routes.ts)):
-  - Registered POST endpoints securely behind authentication boundaries.
+- **Diagram Service** ([diagram.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/diagram.service.ts)):
+  - Built Mermaid graph code configuration generators for all 5 diagram views.
+  - Linked database chunk structures (file listings) and context configuration files (`package.json`, `schema.prisma`) to populate layout metadata.
+  - Added filesystem cache layers (`.mermaid` files) under each repository's storage path.
+- **Diagram Controller** ([diagram.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/diagram.controller.ts)):
+  - Restricts access to repository owners, sanitizes view arguments, and clears cache on demand.
+- **Diagram Router** ([diagram.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/diagram.routes.ts)):
+  - Registered GET routes securely behind auth limits.
 - **REST Express Router** ([index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
-  - Mounted the router to resolve `/api/v1/repositories/:id/docs` and `/api/repositories/:id/docs`.
+  - Mounted the router to resolve `/api/v1/repositories/:id/diagrams` and `/api/repositories/:id/diagrams`.
 - **Chat Workspace Page** ([page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
-  - Designed the **📝 AI Docs** workspace within the Center Panel.
-  - Added option controls (types, tone dropdown), generation progress loaders, Markdown previews, editing inputs, copy options, and download triggers.
+  - Designed the **📊 Diagram** workspace panel next to the documentation layout.
+  - Added option filters (views selector), zoom/pan controls (Zoom In, Zoom Out, Reset, Drag-to-Pan), and client-side Mermaid rendering with CDN script bindings.
+  - Implemented node click interactions: clicking any node extracts its label and matches it to a codebase file path, opening it in the code editor workspace automatically.
+  - Integrated SVG, PNG, and Mermaid text format exports.
 
 ---
 
-## AI Documentation Templates
+## AI Diagram Layout Mappings
 
-| Template Type | Tone Option | Key Sections Created |
-|---|---|---|
-| `README` | `PROFESSIONAL` / `BEGINNER` / `ENTERPRISE` | Project Overview, Installation, Architecture, Folder Structure, Usage, Features, API, Deployment, License |
-| `API_DOCS` | `PROFESSIONAL` / `BEGINNER` / `ENTERPRISE` | API Overview, Endpoint Mappings, Request & Response Payloads, Request Parameter Mappings, Authentication |
-| `FOLDER_STRUCTURE` | `PROFESSIONAL` / `BEGINNER` / `ENTERPRISE` | Folder Overview, Directory Layout Tree, Module Responsibilities, Coding Guidelines |
-| `SETUP_GUIDE` | `PROFESSIONAL` / `BEGINNER` / `ENTERPRISE` | Prerequisites, Installation Steps, Environment Variables, Database Configurations, Running Dev / Production |
+| View | Input View Selection | Render Type | Layout Mapped |
+|---|---|---|---|
+| `FOLDER_STRUCTURE` | Folder Structure | `flowchart TD` | Hierarchical layout mapping directories, sub-folders, and index files. |
+| `DEPENDENCY_GRAPH` | Dependency Graph | `flowchart LR` | Code imports patterns showing modules linkage. |
+| `SERVICE_GRAPH` | Service Graph | `flowchart TD` | Call paths linking controllers, services, and processing workers. |
+| `API_FLOW` | API Flow | `flowchart LR` | Request execution channels mapping routing middlewares to controller endpoints. |
+| `DATABASE_FLOW` | Database Flow | `flowchart TD` / `erDiagram` | Database model structures and relationship cards from schema files. |
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Open AI Docs Panel**:
+1. **Open AI Diagram Panel**:
    - Open `/dashboard/repository/REPO_ID/chat`.
-   - Click the **📝 AI Docs** tab in the center header.
-2. **Generate Documentation**:
-   - Click any template (e.g. `Setup Guide`) and select a tone style (e.g. `Beginner`).
-   - Click **Generate**. Confirm that the loader spins and then renders the text in the preview panel.
-3. **Verify Edit, Copy & Download**:
-   - Click **✏️ Edit** to edit the raw Markdown source, then click **👀 Preview** to view the rendered updates.
-   - Click **Download** or **Copy** to export the content.
+   - Click the **📊 Diagram** tab in the center header.
+2. **Generate Diagram**:
+   - Select `Database Flow` and click **Generate Graph**. Confirm the ER diagram compiles and renders on the board.
+3. **Verify Canvas Controls**:
+   - Scroll or click **Zoom In** / **Zoom Out** to verify scale adjustments.
+   - Click-drag on the canvas to pan.
+4. **Verify File Exploration on Node Click**:
+   - Click a node representing a codebase component (e.g. `schema.prisma`).
+   - Confirm that the dashboard switches back to `📂 Code Viewer` and displays the respective file contents.
+5. **Verify SVG, PNG, and Source Exports**:
+   - Trigger export actions to download `.svg`, `.png`, and `.mermaid` code files successfully.
