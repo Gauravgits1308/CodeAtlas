@@ -16,6 +16,13 @@ export interface Repository {
   defaultBranch?: string
   chunksCount?: number
   embeddingsCount?: number
+  classifications?: {
+    SOURCE_CODE: number
+    MARKUP: number
+    STYLESHEET: number
+    CONFIGURATION: number
+    DOCUMENTATION: number
+  }
 }
 
 export interface CodeMetric {

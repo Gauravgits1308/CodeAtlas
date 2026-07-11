@@ -82,18 +82,19 @@ model SyncLog {
 }
 
 model CodeChunk {
-  id           String     @id @default(uuid())
-  repositoryId String
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  id             String          @id @default(uuid())
+  repositoryId   String
+  repository     Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 
-  filePath     String
-  startLine    Int
-  endLine      Int
-  content      String
+  filePath       String
+  startLine      Int
+  endLine        Int
+  content        String
+  classification String?
 
-  embedding    ChunkEmbedding?
+  embedding      ChunkEmbedding?
 
-  createdAt    DateTime   @default(now())
+  createdAt      DateTime        @default(now())
 
   @@index([repositoryId])
 }

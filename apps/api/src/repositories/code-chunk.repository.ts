@@ -7,6 +7,7 @@ export interface CreateChunkInput {
   startLine: number;
   endLine: number;
   content: string;
+  classification?: string | null;
 }
 
 export class CodeChunkRepository {

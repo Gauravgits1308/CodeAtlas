@@ -4,21 +4,70 @@ import { logger } from "../utils/logger";
 import { AppError } from "../utils/errors";
 
 const EXTENSION_MAP: Record<string, string> = {
+  // Source Code
   ".ts": "TypeScript",
   ".tsx": "TypeScript",
   ".js": "JavaScript",
   ".jsx": "JavaScript",
+  ".mjs": "JavaScript",
+  ".cjs": "JavaScript",
   ".py": "Python",
   ".java": "Java",
   ".cpp": "C++",
   ".c": "C",
   ".go": "Go",
   ".rs": "Rust",
-  ".md": "Markdown",
+  ".cs": "C#",
+  ".php": "PHP",
+  ".rb": "Ruby",
+  ".sql": "SQL",
+
+  // Markup
+  ".html": "HTML",
+
+  // Stylesheet
+  ".css": "CSS",
+  ".scss": "SCSS",
+  ".sass": "Sass",
+  ".less": "Less",
+
+  // Configuration
   ".json": "JSON",
   ".yml": "YAML",
   ".yaml": "YAML",
+  ".toml": "TOML",
+  ".xml": "XML",
+  ".graphql": "GraphQL",
+  ".gql": "GraphQL",
+
+  // Documentation
+  ".md": "Markdown",
+  ".mdx": "Markdown",
 };
+
+const IGNORED_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".ico",
+  ".webp",
+  ".mp4",
+  ".mov",
+  ".pdf",
+  ".zip",
+  ".rar",
+  ".7z",
+  ".exe",
+]);
+
+const IGNORED_FILENAMES = new Set([
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.development",
+]);
 
 const IGNORE_DIRS = new Set([
   ".git",
@@ -28,6 +77,7 @@ const IGNORE_DIRS = new Set([
   ".next",
   "coverage",
   "out",
+  "vendor",
 ]);
 
 export interface AnalysisResult {
@@ -70,11 +120,15 @@ export class RepositoryAnalysisService {
           }
           walk(fullPath);
         } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (IGNORED_FILENAMES.has(entry.name) || IGNORED_EXTENSIONS.has(ext)) {
+            continue;
+          }
+
           totalFiles++;
           const stats = fs.statSync(fullPath);
           totalBytes += stats.size;
 
-          const ext = path.extname(entry.name).toLowerCase();
           const language = EXTENSION_MAP[ext];
 
           let lines = 0;

@@ -119,7 +119,10 @@ export class RepositoryProcessingService {
         for (const chunkInput of chunks) {
           // Persist chunk
           const createdChunk =
-            await this.codeChunkRepository.create(chunkInput);
+            await this.codeChunkRepository.create({
+              ...chunkInput,
+              classification: file.classification,
+            });
 
           logger.debug(
             `Generating embedding for chunk ${createdChunk.id}`

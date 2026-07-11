@@ -65,6 +65,33 @@ export class RepositoryController {
           },
         });
 
+        const classificationCounts = await prisma.codeChunk.groupBy({
+          by: ["classification"],
+          where: {
+            repositoryId: repo.id,
+          },
+          _count: {
+            _all: true,
+          },
+        });
+
+        const classifications = {
+          SOURCE_CODE: 0,
+          MARKUP: 0,
+          STYLESHEET: 0,
+          CONFIGURATION: 0,
+          DOCUMENTATION: 0,
+        };
+
+        for (const group of classificationCounts) {
+          if (group.classification) {
+            const key = group.classification as keyof typeof classifications;
+            if (key in classifications) {
+              classifications[key] = group._count._all;
+            }
+          }
+        }
+
         return {
           id: repo.id,
           githubRepoId: repo.githubRepoId,
@@ -95,6 +122,7 @@ export class RepositoryController {
             : null,
           chunksCount: repo._count?.chunks || 0,
           embeddingsCount: embeddingCount,
+          classifications,
         };
       })
     );

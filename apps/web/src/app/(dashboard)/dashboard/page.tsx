@@ -44,6 +44,13 @@ interface DBRepository {
   defaultBranch: string
   chunksCount: number
   embeddingsCount: number
+  classifications?: {
+    SOURCE_CODE: number
+    MARKUP: number
+    STYLESHEET: number
+    CONFIGURATION: number
+    DOCUMENTATION: number
+  }
   metrics?: {
     linesCount: number
     filesCount: number
@@ -81,6 +88,7 @@ export default function DashboardPage() {
           defaultBranch: repo.defaultBranch,
           chunksCount: repo.chunksCount,
           embeddingsCount: repo.embeddingsCount,
+          classifications: repo.classifications || undefined,
           metrics: repo.metrics ? {
             linesCount: repo.metrics.linesCount,
             filesCount: repo.metrics.filesCount,
@@ -402,6 +410,15 @@ export default function DashboardPage() {
                         <div className="text-xs text-muted-foreground space-y-1 font-mono pt-1">
                           <div>Chunks: <span className="text-foreground font-bold">{repo.chunksCount || 0}</span></div>
                           <div>Embeddings: <span className="text-foreground font-bold">{repo.embeddingsCount || 0}</span></div>
+                          {repo.classifications && (
+                            <div className="pt-2 border-t border-border/10 space-y-1 mt-2 text-[11px] text-muted-foreground/80">
+                              <div>Source Code: <span className="text-foreground font-semibold">{repo.classifications.SOURCE_CODE || 0}</span></div>
+                              <div>Markup: <span className="text-foreground font-semibold">{repo.classifications.MARKUP || 0}</span></div>
+                              <div>Stylesheets: <span className="text-foreground font-semibold">{repo.classifications.STYLESHEET || 0}</span></div>
+                              <div>Configuration: <span className="text-foreground font-semibold">{repo.classifications.CONFIGURATION || 0}</span></div>
+                              <div>Documentation: <span className="text-foreground font-semibold">{repo.classifications.DOCUMENTATION || 0}</span></div>
+                            </div>
+                          )}
                         </div>
                         {(repo.embeddingsCount || 0) > 0 && (
                           <div className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 mt-2">
