@@ -1,52 +1,45 @@
-# Walkthrough - Milestone 3.3.3 GitHub Repository Import Integration
+# Walkthrough - Milestone 3.3.4 User Synchronization with Clerk
 
-Repository import operations have been fully connected between the `RepoSelectionModal` frontend picker and the backend API endpoint (`POST /api/v1/repositories/import`).
+Automatic synchronization between Clerk authentication users and the application's PostgreSQL `User` table has been deployed to execute before protected routing handlers run.
 
 ## Files Modified
-- **Dashboard Types** ([apps/web/src/features/dashboard/types.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/types.ts)):
-  - Added optional `primaryLanguage`, `stars`, and `forks` properties to the `Repository` interface.
-- **Selection Modal Component** ([apps/web/src/features/dashboard/components/RepoSelectionModal.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/components/RepoSelectionModal.tsx)):
-  - Modified `handleImport` to trigger `POST /v1/repositories/import` sending payloads mapped matching `ImportRepositoryPayload`.
-  - Disables action controls and displays loading spinners while imports run.
-  - Implemented custom `onImportSuccess` callback triggers.
-  - Triggers success toast popups or duplicate alerts ("Successfully imported X repositories." / "Repositories synchronized successfully.").
-- **Dashboard Page Component** ([apps/web/src/app/(dashboard)/dashboard/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/page.tsx)):
-  - Replaced local mock listings with actual API request calls to `GET /v1/repositories`.
-  - Added loaders, empty states, and mapped the database repository records to match the details list cards.
-  - Displays primaryLanguage, stars, and forks alongside owner information.
+- **Authentication Middleware** ([apps/api/src/middleware/auth.middleware.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/middleware/auth.middleware.ts)):
+  - Augmented the `requireAuth` middleware to fetch the user profile from `clerkClient` and upsert details using `UserRepository.upsert()`.
+  - Configured structured winston logging triggers:
+    * `"User synchronized: User created in database (ID: ...)"`
+    * `"User synchronized: User updated in database (ID: ...)"`
+    * `"Clerk user DB synchronization failure: ..."` in case of connection exceptions.
 
 ---
 
-## Import Execution Flow
+## User Synchronization Loop
 
 ```mermaid
 graph TD
-    User["Dashboard View"]
-    Modal["RepoSelectionModal Overlay"]
-    PostRequest["POST /api/v1/repositories/import"]
-    DbUpsert["Backend Database Upsert"]
-    SuccessToast["Toast Success Alert"]
-    RefreshCall["GET /api/v1/repositories"]
-    RenderUpdated["Re-render Grid with Imported Repositories"]
+    Client["Front-End Request Client"]
+    AuthMid["requireAuth Middleware (auth.middleware.ts)"]
+    ClerkAPI["Clerk Backend Client (getUser)"]
+    DBCheck["UserRepository.findByClerkId()"]
+    DBUpsert["UserRepository.upsert()"]
+    Logger["Structured Winston Logger"]
+    Controller["Protected Target Controller"]
 
-    User -- "Clicks Connect Repository & selects repos" --> Modal
-    Modal -- "Clicks Import Selected" --> PostRequest
-    PostRequest --> DbUpsert
-    DbUpsert -- "Return 201 JSON Success response" --> Modal
-    Modal -- "1. Trigger toast" --> SuccessToast
-    Modal -- "2. Trigger onImportSuccess Callback" --> RefreshCall
-    RefreshCall -- "Populate updated state array" --> RenderUpdated
+    Client -- "1. Sends request (Authorization Header)" --> AuthMid
+    AuthMid -- "2. Retrieve auth profile details" --> ClerkAPI
+    ClerkAPI -- "Return ID, Email, Full Name" --> AuthMid
+    AuthMid -- "3. Check existence" --> DBCheck
+    AuthMid -- "4. Execute database upsert" --> DBUpsert
+    DBUpsert -- "Log 'User created' or 'User updated'" --> Logger
+    AuthMid -- "5. Next()" --> Controller
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Empty State Dashboard Layout**:
-   - Access the dashboard page at `/dashboard` with an empty account.
-   - Confirm that the loading spinner mounts and resolves to a clean empty state card prompting connection.
-
-2. **Run imports**:
-   - Connect repository using the modal picker.
-   - Select multiple cards and click **Import Selected**.
-   - Confirm the success toast is shown and the imported repositories are rendered inside the dashboard grid.
+1. **Verify Database Upsert Activity**:
+   - Access `http://localhost:3000/dashboard` using a signed-in account.
+   - Run a request that hits a protected backend route.
+   - Run `docker exec -it codeatlas-postgres psql -U postgres -d codeatlas -c 'SELECT * FROM "User";'`
+   - Confirm that the logged-in user record has been correctly inserted or updated.
+   - Verify that there are no foreign key constraint violations during subsequent repository import transactions.
