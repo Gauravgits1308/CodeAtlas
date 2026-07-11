@@ -40,11 +40,16 @@ interface DBRepository {
   primaryLanguage: string | null
   stars: number
   forks: number
+  watchers: number
+  defaultBranch: string
+  chunksCount: number
+  embeddingsCount: number
   metrics?: {
     linesCount: number
     filesCount: number
     languages: { name: string; percentage: number }[]
     complexityScore?: number
+    dependencyCount?: number
   }
 }
 
@@ -66,13 +71,23 @@ export default function DashboardPage() {
           url: repo.htmlUrl || repo.cloneUrl,
           provider: "github" as const,
           isPrivate: repo.visibility === "private",
-          status: repo.status as "indexing" | "active" | "failed",
+          status: repo.status as RepositoryDetails["status"],
           lastSyncedAt: repo.updatedAt,
           createdAt: repo.createdAt,
           primaryLanguage: repo.primaryLanguage,
           stars: repo.stars,
           forks: repo.forks,
-          metrics: repo.metrics || undefined,
+          watchers: repo.watchers,
+          defaultBranch: repo.defaultBranch,
+          chunksCount: repo.chunksCount,
+          embeddingsCount: repo.embeddingsCount,
+          metrics: repo.metrics ? {
+            linesCount: repo.metrics.linesCount,
+            filesCount: repo.metrics.filesCount,
+            languages: repo.metrics.languages,
+            complexityScore: repo.metrics.complexityScore || undefined,
+            dependencyCount: repo.metrics.dependencyCount,
+          } : undefined,
         }))
         setRepositories(mapped)
       }
@@ -98,9 +113,11 @@ export default function DashboardPage() {
   const totalRepos = repositories.length
   const totalFiles = repositories.reduce((sum, repo) => sum + (repo.metrics?.filesCount || 0), 0)
   const totalLines = repositories.reduce((sum, repo) => sum + (repo.metrics?.linesCount || 0), 0)
-  const avgComplexity = totalRepos > 0
-    ? Math.round(repositories.reduce((sum, repo) => sum + (repo.metrics?.complexityScore || 0), 0) / totalRepos)
+  const reposWithComplexity = repositories.filter(repo => repo.metrics?.complexityScore !== undefined && repo.metrics.complexityScore > 0)
+  const avgComplexity = reposWithComplexity.length > 0
+    ? Math.round(reposWithComplexity.reduce((sum, repo) => sum + (repo.metrics?.complexityScore || 0), 0) / reposWithComplexity.length)
     : 0
+  const aiReadyReposCount = repositories.filter(repo => (repo.embeddingsCount || 0) > 0).length
 
   const handleConnectRepo = () => {
     setIsRepoModalOpen(true)
@@ -152,7 +169,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Overview Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Card 1 */}
           <div className="bg-[#111827]/40 border border-border/30 rounded-xl p-5 backdrop-blur-sm space-y-2">
             <div className="flex items-center justify-between text-muted-foreground">
@@ -192,12 +209,24 @@ export default function DashboardPage() {
           {/* Card 4 */}
           <div className="bg-[#111827]/40 border border-border/30 rounded-xl p-5 backdrop-blur-sm space-y-2">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-semibold uppercase tracking-wider">Complexity Score</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Complexity</span>
               <Activity className="size-4 text-amber-500" />
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold font-mono">{avgComplexity}</span>
               <span className="text-xs text-muted-foreground">avg rating</span>
+            </div>
+          </div>
+
+          {/* Card 5 */}
+          <div className="bg-[#111827]/40 border border-border/30 rounded-xl p-5 backdrop-blur-sm space-y-2">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-xs font-semibold uppercase tracking-wider">AI Ready Repos</span>
+              <CheckCircle className="size-4 text-emerald-400" />
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold font-mono">{aiReadyReposCount}</span>
+              <span className="text-xs text-muted-foreground">repos</span>
             </div>
           </div>
         </div>
@@ -241,9 +270,9 @@ export default function DashboardPage() {
               filteredRepos.map((repo) => (
                 <div 
                   key={repo.id} 
-                  className="bg-[#111827]/35 border border-border/30 rounded-xl p-6 hover:border-border/50 transition-all backdrop-blur-sm flex flex-col md:flex-row md:items-center justify-between gap-6"
+                  className="bg-[#111827]/35 border border-border/30 rounded-xl p-6 hover:border-border/50 transition-all backdrop-blur-sm flex flex-col md:flex-row md:items-start justify-between gap-6"
                 >
-                  <div className="space-y-3 flex-1">
+                  <div className="space-y-4 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2.5">
                       <h3 className="font-bold text-lg leading-none text-foreground flex items-center gap-1.5">
                         {repo.name}
@@ -260,20 +289,43 @@ export default function DashboardPage() {
                         </Badge>
                       )}
 
-                      {/* Sync Status Badge */}
-                      {repo.status === "active" && (
-                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 flex items-center gap-1">
-                          <CheckCircle className="size-3" />
-                          <span>Synced</span>
+                      {/* Status Badges */}
+                      {repo.status === "PENDING" && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-slate-400 border-slate-800 bg-slate-900/40 flex items-center gap-1">
+                          <span>Imported</span>
                         </Badge>
                       )}
-                      {repo.status === "indexing" && (
+                      {repo.status === "QUEUED" && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-purple-400 border-purple-400/20 bg-purple-400/5 flex items-center gap-1">
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Queued</span>
+                        </Badge>
+                      )}
+                      {repo.status === "CLONING" && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-cyan-400 border-cyan-400/20 bg-cyan-400/5 flex items-center gap-1">
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Cloning</span>
+                        </Badge>
+                      )}
+                      {repo.status === "ANALYZING" && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-indigo-400 border-indigo-400/20 bg-indigo-400/5 flex items-center gap-1">
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Analyzing</span>
+                        </Badge>
+                      )}
+                      {(repo.status === "INDEXING" || repo.status === "PROCESSING") && (
                         <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-blue-400 border-blue-400/20 bg-blue-400/5 flex items-center gap-1">
                           <Loader2 className="size-3 animate-spin" />
-                          <span>Indexing</span>
+                          <span>Indexing...</span>
                         </Badge>
                       )}
-                      {repo.status === "failed" && (
+                      {repo.status === "COMPLETED" && (
+                        <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 flex items-center gap-1">
+                          <CheckCircle className="size-3" />
+                          <span>Completed</span>
+                        </Badge>
+                      )}
+                      {repo.status === "FAILED" && (
                         <Badge variant="outline" className="px-1.5 py-0.5 text-[10px] text-rose-400 border-rose-400/20 bg-rose-400/5 flex items-center gap-1">
                           <XCircle className="size-3" />
                           <span>Failed</span>
@@ -281,9 +333,21 @@ export default function DashboardPage() {
                       )}
                     </div>
 
+                    {repo.description && (
+                      <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
+                        {repo.description}
+                      </p>
+                    )}
+
                     {/* Metadata Subtitles */}
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground font-mono">
                       <span>Owner: {repo.owner}</span>
+                      {repo.defaultBranch && (
+                        <>
+                          <span>•</span>
+                          <span>Branch: {repo.defaultBranch}</span>
+                        </>
+                      )}
                       {repo.primaryLanguage && (
                         <>
                           <span>•</span>
@@ -308,21 +372,67 @@ export default function DashboardPage() {
                           </span>
                         </>
                       )}
-                      <span>•</span>
-                      <span>Files: {repo.metrics?.filesCount || 0}</span>
-                      <span>•</span>
-                      <span>Lines: {(repo.metrics?.linesCount || 0).toLocaleString()}</span>
-                      {repo.lastSyncedAt && (
+                      {repo.watchers !== undefined && repo.watchers > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5">
+                            <Activity className="size-3 text-indigo-400" />
+                            {repo.watchers}
+                          </span>
+                        </>
+                      )}
+                      {repo.lastSyncedAt ? (
                         <>
                           <span>•</span>
                           <span>Synced: {new Date(repo.lastSyncedAt).toLocaleDateString()}</span>
                         </>
+                      ) : (
+                        <>
+                          <span>•</span>
+                          <span>Imported: {new Date(repo.createdAt).toLocaleDateString()}</span>
+                        </>
                       )}
+                    </div>
+
+                    {/* Repository Processing & Metrics Insights */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 max-w-4xl">
+                      {/* Chunks & Embeddings info */}
+                      <div className="bg-[#111827]/25 border border-border/10 rounded-xl p-4.5 space-y-2 flex flex-col justify-between">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider font-mono">Repository Indexing</span>
+                        <div className="text-xs text-muted-foreground space-y-1 font-mono pt-1">
+                          <div>Chunks: <span className="text-foreground font-bold">{repo.chunksCount || 0}</span></div>
+                          <div>Embeddings: <span className="text-foreground font-bold">{repo.embeddingsCount || 0}</span></div>
+                        </div>
+                        {(repo.embeddingsCount || 0) > 0 && (
+                          <div className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 mt-2">
+                            <CheckCircle className="size-4 text-emerald-400 fill-emerald-500/10" />
+                            <span>AI Ready</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* CodeMetrics stats */}
+                      <div className="bg-[#111827]/25 border border-border/10 rounded-xl p-4.5 space-y-2">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider font-mono">Analysis Metrics</span>
+                        <div className="text-xs text-muted-foreground space-y-1 font-mono pt-1">
+                          <div>Files Count: <span className="text-foreground font-bold">{repo.metrics?.filesCount || 0}</span></div>
+                          <div>Lines Count: <span className="text-foreground font-bold">{(repo.metrics?.linesCount || 0).toLocaleString()}</span></div>
+                        </div>
+                      </div>
+
+                      {/* Complexity & Dependencies */}
+                      <div className="bg-[#111827]/25 border border-border/10 rounded-xl p-4.5 space-y-2">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider font-mono">Complexity Insights</span>
+                        <div className="text-xs text-muted-foreground space-y-1 font-mono pt-1">
+                          <div>Complexity: <span className="text-foreground font-bold">{repo.metrics?.complexityScore !== undefined ? repo.metrics.complexityScore : "N/A"}</span></div>
+                          <div>Dependencies: <span className="text-foreground font-bold">{repo.metrics?.dependencyCount || 0}</span></div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Languages Stack Bar */}
                     {repo.metrics?.languages && repo.metrics.languages.length > 0 && (
-                      <div className="space-y-1.5 max-w-md pt-1">
+                      <div className="space-y-1.5 max-w-md pt-1.5">
                         <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
                           {repo.metrics.languages.map((lang, idx) => {
                             const colors = ["bg-primary", "bg-purple-500", "bg-emerald-500", "bg-amber-500"]
@@ -353,7 +463,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Right Actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-start md:self-center shrink-0">
                     <a
                       href={repo.url}
                       target="_blank"
@@ -366,7 +476,7 @@ export default function DashboardPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={repo.status === "indexing" || syncingId === repo.id}
+                      disabled={repo.status === "QUEUED" || repo.status === "CLONING" || repo.status === "ANALYZING" || repo.status === "INDEXING" || repo.status === "PROCESSING" || syncingId === repo.id}
                       onClick={() => handleSyncRepo(repo.id, repo.name)}
                       className="border-border/30 hover:bg-muted/40 text-xs font-semibold flex items-center gap-1.5 h-9 px-3 cursor-pointer"
                     >

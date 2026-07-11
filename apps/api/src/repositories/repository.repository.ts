@@ -44,9 +44,17 @@ export class RepositoryRepository {
     });
   }
 
-  async findByUser(userId: string): Promise<Repository[]> {
+  async findByUser(userId: string): Promise<unknown[]> {
     return prisma.repository.findMany({
       where: { userId },
+      include: {
+        metrics: true,
+        _count: {
+          select: {
+            chunks: true,
+          },
+        },
+      },
     });
   }
 

@@ -1,50 +1,52 @@
-# Walkthrough - Milestone 3.3.5 Dashboard Sync Button Connection
+# Walkthrough - Milestone 3.3.5 Dashboard Backend Data Integration
 
-The dashboard's **Sync** button is now connected directly to the existing backend queue processing route (`POST /api/v1/repositories/:id/process`).
+The dashboard page has been fully configured to fetch, aggregate, and display actual repository metrics and indexing progress parameters.
 
-## Files Modified
+## Backend Changes
+- **Repository Repository** ([apps/api/src/repositories/repository.repository.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/repositories/repository.repository.ts)):
+  - Updated the `findByUser` query to include `metrics` and `_count` (for chunks) relation selections.
+- **Repository Service** ([apps/api/src/services/repository.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository.service.ts)):
+  - Updated `getUserRepositories` signatures to return relation structures.
+- **Repository Controller** ([apps/api/src/controllers/repository.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/repository.controller.ts)):
+  - Updated `getUserRepositories` handler to execute parallel embedding count calls (`prisma.chunkEmbedding.count`) for each repository, returning complete payloads back to the front-end dashboard.
+
+## Frontend Changes
+- **Dashboard Types** ([apps/web/src/features/dashboard/types.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/types.ts)):
+  - Extended the `Repository` and `CodeMetric` definitions to hold description, language, stars, forks, watchers, default branch, chunks count, embeddings count, and dependency counts.
 - **Dashboard Page Component** ([apps/web/src/app/(dashboard)/dashboard/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/page.tsx)):
-  - Updated `handleSyncRepo` to make an asynchronous `api.post` call to `/v1/repositories/${id}/process`.
-  - Disables action items and displays spinner classes to signal background analysis queue operations.
-  - Automatically fetches updated repository list from `/v1/repositories` upon successful queuing.
-  - Triggers toast alerts informing the user of the queuing status or failure codes.
+  - Configured five responsive summary cards displaying total repositories, total files, total lines of code, average complexity score, and AI ready repositories.
+  - Dynamically renders status badges representing imported, queued, cloning, analyzing, indexing, completed, and failed status flows.
+  - Displays indexing metadata boxes detailing chunk sizes, embedding quantities, complexity ranks, dependency metrics, and language percentage bars.
 
 ---
 
-## Sync Integration Flow
+## Live Dashboard Mapping Loop
 
 ```mermaid
 graph TD
-    User["Dashboard Page View"]
-    SyncBtn["Clicks Sync Button on Repository Card"]
-    Spinner["Button disables and RefreshCw spins"]
-    PostRequest["POST /api/v1/repositories/:id/process"]
-    BackendQueue["Job Queued (BullMQ / Redis)"]
-    SuccessToast["Toast Success: Repository queued for processing"]
-    RefreshCall["GET /api/v1/repositories"]
-    StatusUpdate["Card status updates to 'indexing'"]
+    Client["Dashboard View (page.tsx)"]
+    GetRepos["GET /api/v1/repositories"]
+    Controller["RepositoryController (repository.controller.ts)"]
+    DBUserRepos["Prisma Repository Lookup (metrics & chunks count)"]
+    DBEmbedCount["Prisma Embedding Count (chunkEmbedding)"]
+    JSONResponse["JSON Payload Response"]
+    RenderCards["Render Detailed Grid & Summary Cards"]
 
-    User --> SyncBtn
-    SyncBtn --> Spinner
-    Spinner --> PostRequest
-    PostRequest --> BackendQueue
-    BackendQueue -- "HTTP 202 JSON Response" --> PostRequest
-    PostRequest -- "1. Trigger toast" --> SuccessToast
-    PostRequest -- "2. Re-fetch repositories list" --> RefreshCall
-    RefreshCall --> StatusUpdate
+    Client -- "Fetch repository data" --> GetRepos
+    GetRepos --> Controller
+    Controller -- "1. getUserRepositories()" --> DBUserRepos
+    Controller -- "2. Count embeddings per repository" --> DBEmbedCount
+    DBUserRepos & DBEmbedCount --> JSONResponse
+    JSONResponse -- "success: true, repositories: [...]" --> Client
+    Client --> RenderCards
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Sync Trigger Pipeline**:
+1. **Verify Live Data Synchronization**:
    - Access the dashboard page at `/dashboard`.
+   - Confirm that the aggregated totals on the summary cards represent actual repository files and lines counts.
    - Click the **Sync** button next to any imported repository.
-   - Verify that the card's status badge updates to `Indexing` and the sync button spins.
-   - Check the backend console to confirm the logs output:
-     * `Job queued`
-     * `Worker started`
-     * `Clone started`
-     * `Analysis started`
-     * `Processing completed`
+   - Observe that the status badge updates to `Indexing...` and refresh results automatically reflect completed processing counts (chunks, files, languages, and complexity metrics).

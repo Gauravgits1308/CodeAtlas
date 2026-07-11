@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import { RepositoryService, ImportRepositoryPayload } from "../services/repository.service";
 import { RepositoryJobService } from "../services/repository-job.service";
 import { asyncHandler, AppError } from "../utils/errors";
+import { prisma } from "../database";
 
 export class RepositoryController {
   private repositoryJobService: RepositoryJobService;
@@ -53,27 +54,54 @@ export class RepositoryController {
     const userId = req.auth.userId;
     const repositories = await this.repositoryService.getUserRepositories(userId);
 
+    const reposWithDetails = await Promise.all(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      repositories.map(async (repo: any) => {
+        const embeddingCount = await prisma.chunkEmbedding.count({
+          where: {
+            chunk: {
+              repositoryId: repo.id,
+            },
+          },
+        });
+
+        return {
+          id: repo.id,
+          githubRepoId: repo.githubRepoId,
+          name: repo.name,
+          fullName: repo.fullName,
+          owner: repo.owner,
+          visibility: repo.visibility,
+          defaultBranch: repo.defaultBranch,
+          cloneUrl: repo.cloneUrl,
+          htmlUrl: repo.htmlUrl,
+          description: repo.description,
+          primaryLanguage: repo.primaryLanguage,
+          stars: repo.stars,
+          forks: repo.forks,
+          watchers: repo.watchers,
+          status: repo.status,
+          lastSyncedAt: repo.lastSyncedAt,
+          createdAt: repo.createdAt,
+          updatedAt: repo.updatedAt,
+          metrics: repo.metrics
+            ? {
+                linesCount: repo.metrics.linesCount,
+                filesCount: repo.metrics.filesCount,
+                complexityScore: repo.metrics.complexityScore,
+                dependencyCount: repo.metrics.dependencyCount,
+                languages: repo.metrics.languages,
+              }
+            : null,
+          chunksCount: repo._count?.chunks || 0,
+          embeddingsCount: embeddingCount,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      repositories: repositories.map((repo) => ({
-        id: repo.id,
-        githubRepoId: repo.githubRepoId,
-        name: repo.name,
-        fullName: repo.fullName,
-        owner: repo.owner,
-        visibility: repo.visibility,
-        defaultBranch: repo.defaultBranch,
-        cloneUrl: repo.cloneUrl,
-        htmlUrl: repo.htmlUrl,
-        description: repo.description,
-        primaryLanguage: repo.primaryLanguage,
-        stars: repo.stars,
-        forks: repo.forks,
-        watchers: repo.watchers,
-        status: repo.status,
-        createdAt: repo.createdAt,
-        updatedAt: repo.updatedAt,
-      })),
+      repositories: reposWithDetails,
     });
   });
 

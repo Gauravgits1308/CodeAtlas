@@ -97,7 +97,7 @@ export class RepositoryService {
   /**
    * Retrieves all imported repository records from PostgreSQL for the given user.
    */
-  async getUserRepositories(userId: string): Promise<Repository[]> {
+  async getUserRepositories(userId: string): Promise<unknown[]> {
     return this.repositoryRepository.findByUser(userId);
   }
 
