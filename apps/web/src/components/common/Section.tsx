@@ -10,7 +10,7 @@ export function Section({ className, id, ...props }: SectionProps) {
     <section
       id={id}
       className={cn(
-        "py-16 md:py-24 lg:py-32 overflow-hidden relative",
+        "py-16 md:py-24 lg:py-32 overflow-hidden relative scroll-mt-20",
         className
       )}
       {...props}

@@ -17,6 +17,24 @@ export function Navbar() {
   const [isScrolled, setIsScrolled] = React.useState(false)
   const pathname = usePathname()
 
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith("/#") && pathname === "/") {
+      e.preventDefault()
+      const targetId = href.replace("/#", "")
+      const element = document.getElementById(targetId)
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" })
+      }
+    } else if (href.startsWith("#") && pathname === "/") {
+      e.preventDefault()
+      const targetId = href.replace("#", "")
+      const element = document.getElementById(targetId)
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" })
+      }
+    }
+  }
+
   React.useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 10) {
@@ -60,6 +78,7 @@ export function Navbar() {
               <Link
                 key={link.name}
                 href={link.href}
+                onClick={(e) => handleNavClick(e, link.href)}
                 className={cn(
                   "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1.5 hover:-translate-y-0.5 transform duration-200",
                   pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground",
@@ -145,7 +164,10 @@ export function Navbar() {
                   <Link
                     key={link.name}
                     href={link.href}
-                    onClick={() => setIsOpen(false)}
+                    onClick={(e) => {
+                      setIsOpen(false)
+                      handleNavClick(e, link.href)
+                    }}
                     className={cn(
                       "text-base font-medium transition-colors py-1.5 flex items-center gap-2",
                       pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
