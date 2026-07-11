@@ -1,24 +1,24 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { 
-  ChevronLeft, 
   Send, 
   Loader2, 
   MessageSquare, 
   CheckCircle, 
   FileCode, 
   HelpCircle, 
-  ExternalLink,
-  Folder,
-  FolderOpen,
-  File,
-  Search,
-  Copy,
-  Check,
-  Terminal
+  Folder, 
+  FolderOpen, 
+  File, 
+  Search, 
+  Copy, 
+  Check, 
+  Terminal, 
+  ArrowRight, 
+  Sparkles, 
+  Code 
 } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
@@ -76,19 +76,52 @@ interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
-const SUGGESTED_QUESTIONS = [
-  "Explain repository architecture",
-  "Where is authentication handled?",
-  "How is routing implemented?",
-  "Explain database layer.",
-  "Which files contain API endpoints?",
+const SUGGESTED_CARDS = [
+  { icon: "🏗", title: "Explain Architecture", text: "Explain repository architecture" },
+  { icon: "🔐", title: "Explain Authentication", text: "Where is authentication handled?" },
+  { icon: "🗂", title: "Repository Structure", text: "Explain database layer." },
+  { icon: "⚡", title: "Entry Point", text: "Which files contain API endpoints?" },
+  { icon: "📦", title: "Dependencies", text: "How is routing implemented?" },
 ]
+
+const PROGRESSIVE_STEPS = [
+  "🤖 Thinking...",
+  "🔍 Searching repository chunks...",
+  "📂 Retrieving relevant code context...",
+  "✍️ Generating answer..."
+]
+
+function ProgressiveLoader() {
+  const [step, setStep] = React.useState(0)
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setStep((prev) => Math.min(prev + 1, PROGRESSIVE_STEPS.length - 1))
+    }, 1500)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="flex flex-col gap-2 p-4 bg-[#111622]/40 border border-border/10 rounded-xl my-3 text-[11px] font-mono select-none">
+      <div className="flex items-center gap-2 text-primary font-bold">
+        <Loader2 className="size-3.5 animate-spin" />
+        <span>{PROGRESSIVE_STEPS[step]}</span>
+      </div>
+      <div className="w-full bg-[#1A233C]/40 rounded-full h-1 overflow-hidden">
+        <div 
+          className="bg-primary h-full transition-all duration-500" 
+          style={{ width: `${((step + 1) / PROGRESSIVE_STEPS.length) * 100}%` }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id: repositoryId } = React.use(params)
 
-  // Layout Tabs: 'chat' | 'explorer' | 'code'
+  // Layout Tabs on Mobile viewports: 'chat' | 'explorer' | 'code'
   const [activeTab, setActiveTab] = React.useState<"chat" | "explorer" | "code">("chat")
 
   const [repoDetails, setRepoDetails] = React.useState<RepositoryDetails | null>(null)
@@ -350,7 +383,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   // Recursive tree render helper
   const renderTree = (nodes: FileTreeNode[]) => {
     return (
-      <div className="space-y-1.5 pl-3">
+      <div className="space-y-1.5 pl-2.5">
         {nodes.map((node) => {
           const isDir = node.type === "directory"
           const isExpanded = expandedFolders[node.path]
@@ -366,25 +399,25 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     handleSelectFile(node.path)
                   }
                 }}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer select-none ${
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-mono transition-all duration-150 cursor-pointer select-none border border-transparent ${
                   isSelected 
-                    ? "bg-primary/15 text-primary border border-primary/20" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-[#1A233C]/20 border border-transparent"
+                    ? "bg-primary/10 text-primary border-primary/20" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-[#1A233C]/20"
                 }`}
               >
                 {isDir ? (
                   isExpanded ? (
-                    <FolderOpen className="size-4 shrink-0 text-primary" />
+                    <FolderOpen className="size-3.5 shrink-0 text-primary" />
                   ) : (
-                    <Folder className="size-4 shrink-0 text-primary/80" />
+                    <Folder className="size-3.5 shrink-0 text-primary/80" />
                   )
                 ) : (
-                  <File className="size-4 shrink-0 text-slate-400" />
+                  <File className="size-3.5 shrink-0 text-slate-400" />
                 )}
                 <span className="truncate">{node.name}</span>
               </div>
               {isDir && isExpanded && node.children && (
-                <div className="border-l border-border/15 ml-3 pl-1">
+                <div className="border-l border-border/10 ml-2.5 pl-1.5">
                   {renderTree(node.children)}
                 </div>
               )}
@@ -397,308 +430,340 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   if (isLoadingRepo) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 py-32 gap-3.5">
+      <div className="flex flex-col items-center justify-center flex-1 py-32 gap-3.5 bg-[#0B0F19]">
         <Loader2 className="size-8 text-primary animate-spin" />
-        <p className="text-sm text-muted-foreground">Loading workspace files & configuration...</p>
+        <p className="text-sm text-muted-foreground font-mono">Loading repository workspace configuration...</p>
       </div>
     )
   }
 
   if (!repoDetails) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 py-32 gap-3.5">
+      <div className="flex flex-col items-center justify-center flex-1 py-32 gap-3.5 bg-[#0B0F19]">
         <HelpCircle className="size-8 text-rose-500" />
-        <p className="text-sm text-muted-foreground">Failed to initialize repository chatspace.</p>
+        <p className="text-sm text-muted-foreground font-mono">Failed to initialize repository chatspace.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#0B0F19]">
-      {/* 1. Header Banner */}
-      <div className="border-b border-border/20 bg-[#0F1424]/40 py-3.5 px-4 select-none shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Link
-              href="/dashboard"
-              className="p-1 hover:bg-[#1E2538] text-muted-foreground hover:text-foreground rounded-lg transition-all"
-            >
-              <ChevronLeft className="size-4.5" />
-            </Link>
-            <Heading level="h2" className="text-base font-bold truncate">
-              {repoDetails.name}
-            </Heading>
-            <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 py-0 px-2 flex items-center gap-1 font-mono">
-              <CheckCircle className="size-3" />
-              <span>AI Ready</span>
-            </Badge>
-          </div>
-
-          {/* Responsive Header Tabs for mobile view toggles */}
-          <div className="flex items-center bg-[#111622] border border-border/20 p-0.5 rounded-xl font-mono text-[10px] uppercase font-bold tracking-wider md:hidden">
-            <button
-              onClick={() => setActiveTab("explorer")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === "explorer" ? "bg-[#1A233C] text-foreground" : "text-muted-foreground"}`}
-            >
-              Files
-            </button>
-            <button
-              onClick={() => setActiveTab("chat")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === "chat" ? "bg-[#1A233C] text-foreground" : "text-muted-foreground"}`}
-            >
-              Chat
-            </button>
-            <button
-              onClick={() => setActiveTab("code")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === "code" ? "bg-[#1A233C] text-foreground" : "text-muted-foreground"}`}
-            >
-              Code
-            </button>
-          </div>
-
-          <div className="hidden md:flex items-center gap-4 text-xs font-mono text-muted-foreground">
-            <span>Files: {repoDetails.metrics?.filesCount || 0}</span>
-            <span>Chunks: {repoDetails.chunksCount || 0}</span>
-            <a
-              href={repoDetails.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <ExternalLink className="size-3.5" />
-              <span>GitHub</span>
-            </a>
+    <div className="h-[calc(100vh-57px)] w-full flex overflow-hidden text-foreground bg-[#0B0F19]">
+      
+      {/* COLUMN 1: LEFT SIDEBAR (File Tree Explorer) */}
+      <aside className={`w-72 border-r border-border/20 bg-[#0A0D15] flex flex-col shrink-0 z-30 transition-transform duration-200 absolute inset-y-0 left-0 md:relative md:translate-x-0 ${
+        activeTab === "explorer" ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        {/* Explorer Header */}
+        <div className="p-4 border-b border-border/10 flex items-center justify-between select-none">
+          <div className="flex items-center gap-2">
+            <Terminal className="size-4 text-primary" />
+            <span className="text-xs uppercase font-extrabold tracking-wider font-mono text-muted-foreground">Workspace Tree</span>
           </div>
         </div>
-      </div>
 
-      {/* 2. Main Workspace Layout Grid */}
-      <div className="flex-1 flex min-h-0 relative">
-        
-        {/* Left Panel: Sidebar Repository tree explorer */}
-        <div className={`absolute inset-y-0 left-0 z-30 w-64 border-r border-border/20 bg-[#0A0D15] flex flex-col shrink-0 transition-transform duration-200 md:relative md:translate-x-0 ${
-          activeTab === "explorer" ? "translate-x-0" : "-translate-x-full"
-        }`}>
-          <div className="p-3 border-b border-border/10">
-            <div className="relative bg-[#111622] border border-border/20 rounded-lg p-1.5 flex items-center gap-2 focus-within:border-primary/40">
-              <Search className="size-4 text-muted-foreground shrink-0 pl-1" />
-              <input
-                type="text"
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Search files..."
-                className="bg-transparent border-none text-xs text-foreground focus:outline-none placeholder:text-muted-foreground/45 flex-1 min-w-0"
-              />
+        {/* File Search Input */}
+        <div className="p-3 border-b border-border/10 select-none">
+          <div className="relative bg-[#111622] border border-border/25 rounded-xl p-2 flex items-center gap-2 focus-within:border-primary/45 transition-colors">
+            <Search className="size-3.5 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Search files..."
+              className="bg-transparent border-none text-xs text-foreground focus:outline-none placeholder:text-muted-foreground/35 flex-1 min-w-0"
+            />
+          </div>
+        </div>
+
+        {/* Tree Container (Independently scrollable) */}
+        <div className="flex-1 overflow-y-auto p-3 pr-2 scrollbar-thin">
+          {getFilteredNodes().length > 0 ? (
+            renderTree(getFilteredNodes())
+          ) : (
+            <div className="text-center text-xs text-muted-foreground/30 font-mono py-12 select-none">
+              No matching files
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 pr-2 scrollbar-thin">
-            {getFilteredNodes().length > 0 ? (
-              renderTree(getFilteredNodes())
-            ) : (
-              <div className="text-center text-xs text-muted-foreground/40 font-mono py-12">
-                No matching files found
-              </div>
-            )}
-          </div>
+          )}
         </div>
+      </aside>
 
-        {/* Center Panel: Assistant Chat window */}
-        <div className={`flex-1 flex flex-col min-h-0 bg-[#0B0F19] ${
-          activeTab === "chat" ? "flex" : "hidden md:flex border-r border-border/20"
-        }`}>
-          <div className="flex-1 overflow-y-auto py-6 select-text">
-            <div className="max-w-2xl mx-auto px-4 space-y-6">
-              {messages.length === 0 ? (
-                /* Suggested Questions Layout */
-                <div className="py-16 space-y-6 text-center select-none max-w-md mx-auto">
-                  <div className="size-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse">
-                    <MessageSquare className="size-5" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-sm text-foreground">Codebase Assistant</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Ask natural language questions about patterns or configurations. The assistant will answer grounded in indexed code.
-                    </p>
-                  </div>
-                  <div className="space-y-2 pt-2">
-                    {SUGGESTED_QUESTIONS.map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => handleSend(q)}
-                        disabled={isSubmitting}
-                        className="w-full text-left px-4 py-2.5 bg-[#111622]/40 border border-border/15 hover:border-primary/45 hover:bg-[#1A233C]/20 text-xs text-muted-foreground hover:text-foreground rounded-lg transition-all font-mono cursor-pointer"
-                      >
-                        {q}
-                      </button>
+      {/* COLUMN 2: CENTER PANEL (Code Viewer - Independently scrollable) */}
+      <main className={`flex-1 flex flex-col min-w-0 bg-[#080B12] transition-all duration-200 border-r border-border/20 ${
+        activeTab === "code" ? "flex" : "hidden md:flex"
+      }`}>
+        {selectedFilePath ? (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+            {/* Sticky File Header */}
+            <div className="px-4 py-3 bg-[#111622]/60 border-b border-border/15 flex items-center justify-between gap-4 select-none shrink-0 font-mono text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5 font-mono text-foreground font-semibold">
+                <FileCode className="size-4 text-primary" />
+                {selectedFilePath.split("/").pop()}
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-muted-foreground/45 truncate max-w-xs">{selectedFilePath}</span>
+                {fileContents[selectedFilePath] && (
+                  <button
+                    onClick={() => handleCopyCode(fileContents[selectedFilePath] || "")}
+                    className="hover:text-foreground flex items-center gap-1 transition-all cursor-pointer font-mono"
+                  >
+                    {copiedCode ? (
+                      <>
+                        <Check className="size-3.5 text-emerald-400" />
+                        <span className="text-[10px] text-emerald-400">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="size-3.5" />
+                        <span className="text-[10px]">Copy</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Code Body Container (Independently scrollable) */}
+            <div className="flex-1 overflow-auto p-4 select-text">
+              {isLoadingFile ? (
+                <div className="flex flex-col items-center justify-center h-full gap-2 font-mono text-xs text-muted-foreground">
+                  <Loader2 className="size-6 text-primary animate-spin" />
+                  <span>Fetching file content bytes...</span>
+                </div>
+              ) : fileContents[selectedFilePath] ? (
+                <div className="flex font-mono text-[11px] text-[#E2E8F0] min-w-max select-text">
+                  {/* Line numbers column */}
+                  <div className="text-muted-foreground/30 text-right pr-4 border-r border-border/10 select-none min-w-8 font-mono">
+                    {fileContents[selectedFilePath].split("\n").map((_, lineIdx) => (
+                      <div key={lineIdx} className="min-h-6 flex items-center justify-end font-mono">
+                        {lineIdx + 1}
+                      </div>
                     ))}
+                  </div>
+                  {/* Code lines column */}
+                  <div className="flex-1 pl-4 font-mono select-text">
+                    {fileContents[selectedFilePath].split("\n").map((lineContent, lineIdx) => {
+                      const lineNumber = lineIdx + 1
+                      const isHighlighted =
+                        highlightedLines &&
+                        lineNumber >= highlightedLines.start &&
+                        lineNumber <= highlightedLines.end
+
+                      return (
+                        <div
+                          key={lineIdx}
+                          id={`line-${lineNumber}`}
+                          className={`min-h-6 flex items-center font-mono text-[11px] pl-2 pr-4 transition-all duration-300 select-text ${
+                            isHighlighted
+                              ? "bg-amber-500/10 border-l-2 border-amber-400 text-amber-100 font-bold"
+                              : "hover:bg-[#1A233C]/20"
+                          }`}
+                        >
+                          {lineContent || <span className="opacity-0"> </span>}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ) : (
-                /* Message list rendering */
-                <div className="space-y-6">
-                  {messages.map((message) => {
-                    const isAssistant = message.role === "assistant"
-                    const isThinking = isAssistant && message.content === "Thinking..."
-
-                    return (
-                      <div key={message.id} className={`flex gap-3.5 ${isAssistant ? "justify-start" : "justify-end"}`}>
-                        {isAssistant && (
-                          <div className="size-7.5 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 font-mono">
-                            AI
-                          </div>
-                        )}
-                        <div className="space-y-1.5 max-w-[85%] min-w-0">
-                          <div className={`rounded-xl p-4 text-xs leading-relaxed ${
-                            isAssistant ? "bg-[#111622]/40 border border-border/10 text-foreground" : "bg-primary/10 border border-primary/20 text-foreground"
-                          }`}>
-                            {isThinking ? (
-                              <div className="flex items-center gap-2 text-muted-foreground font-mono">
-                                <Loader2 className="size-3.5 animate-spin text-primary" />
-                                <span>Thinking...</span>
-                              </div>
-                            ) : isAssistant ? (
-                              <Markdown content={message.content} />
-                            ) : (
-                              <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                            )}
-
-                            {/* Citations Buttons */}
-                            {isAssistant && !isThinking && message.sources && message.sources.length > 0 && (
-                              <div className="mt-4 pt-3 border-t border-border/10 space-y-2">
-                                <span className="text-[9px] uppercase font-bold text-muted-foreground tracking-wider font-mono block">Citations Sources</span>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {message.sources.map((src, sIdx) => (
-                                    <button
-                                      key={sIdx}
-                                      onClick={() => handleOpenCitation(src)}
-                                      className="bg-[#111622] hover:bg-[#1E2538] border border-border/25 text-[9px] text-muted-foreground hover:text-foreground px-2 py-1 rounded font-mono flex items-center gap-1 transition-all cursor-pointer"
-                                    >
-                                      <FileCode className="size-3 text-primary" />
-                                      <span>{src.filePath.split("/").pop()} ({src.startLine}-{src.endLine})</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div ref={chatEndRef} />
+                <div className="text-center text-xs text-muted-foreground/30 font-mono py-24 select-none">
+                  Empty File content
                 </div>
               )}
             </div>
           </div>
-
-          {/* Bottom input area */}
-          <div className="border-t border-border/10 bg-[#0F1424]/40 py-3.5 px-4 shrink-0 select-none">
-            <div className="max-w-2xl mx-auto relative bg-[#111622]/80 border border-border/20 focus-within:border-primary/45 rounded-xl p-1.5 flex items-end gap-2">
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isSubmitting}
-                placeholder="Ask codebase queries..."
-                className="flex-1 bg-transparent border-none text-xs text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-2 px-3 min-h-[36px] max-h-[160px] leading-relaxed"
-              />
-              <Button
-                onClick={() => handleSend()}
-                disabled={isSubmitting || !question.trim()}
-                className="bg-primary hover:bg-primary/95 text-white size-8.5 rounded-lg shrink-0 cursor-pointer p-0"
-              >
-                {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              </Button>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-3 text-muted-foreground/40 font-mono">
+            <Terminal className="size-12 text-muted-foreground/15" />
+            <div className="text-xs font-bold text-foreground/40">No File Selected</div>
+            <div className="text-[10px] max-w-xs leading-relaxed">
+              Open any file from the repository sidebar or click an AI response citation to view content.
             </div>
+          </div>
+        )}
+      </main>
+
+      {/* COLUMN 3: RIGHT PANEL (AI Assistant Chat - independently scrollable) */}
+      <section className={`w-full md:w-[400px] xl:w-[450px] bg-[#0E1220] flex flex-col shrink-0 z-10 transition-all duration-200 border-l border-border/20 ${
+        activeTab === "chat" ? "flex" : "hidden md:flex"
+      }`}>
+        
+        {/* Repository Summary Card */}
+        <div className="p-4 border-b border-border/10 bg-[#0A0D15]/40 select-none shrink-0 space-y-2">
+          <div className="flex items-center justify-between gap-2.5">
+            <Heading level="h3" className="text-xs font-extrabold font-mono text-muted-foreground truncate uppercase tracking-wider">
+              Grounded Assistant
+            </Heading>
+            <Badge variant="outline" className="text-[9px] text-emerald-400 border-emerald-400/20 bg-emerald-400/5 py-0 px-2 font-mono">
+              <CheckCircle className="size-2.5 mr-1" />
+              <span>AI Ready</span>
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-muted-foreground/80 bg-[#111622]/40 p-2.5 border border-border/10 rounded-xl">
+            <div className="truncate">Files: {repoDetails.metrics?.filesCount || 0}</div>
+            <div className="truncate">Branch: {repoDetails.defaultBranch || "main"}</div>
+            <div className="truncate">Chunks: {repoDetails.chunksCount || 0}</div>
+            <div className="truncate">Embeddings: {repoDetails.embeddingsCount || 0}</div>
           </div>
         </div>
 
-        {/* Right Panel: Selected File Code Viewer */}
-        <div className={`flex-1 flex-col min-h-0 bg-[#080B12] ${
-          activeTab === "code" ? "flex" : "hidden md:flex md:w-1/2 lg:w-1/3 xl:w-2/5"
-        }`}>
-          {selectedFilePath ? (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* Sticky File Header */}
-              <div className="px-4 py-2.5 bg-[#111622]/70 border-b border-border/20 flex items-center justify-between gap-4 select-none shrink-0 font-mono text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5 font-mono text-foreground tracking-tight">
-                  <FileCode className="size-4 text-primary" />
-                  {selectedFilePath.split("/").pop()}
-                </span>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-muted-foreground/45 truncate max-w-xs">{selectedFilePath}</span>
-                  {fileContents[selectedFilePath] && (
-                    <button
-                      onClick={() => handleCopyCode(fileContents[selectedFilePath] || "")}
-                      className="hover:text-foreground flex items-center gap-1 transition-all cursor-pointer"
-                    >
-                      {copiedCode ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
-                    </button>
-                  )}
-                </div>
+        {/* Conversation Message Area (Independently scrollable) */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 select-text scrollbar-thin">
+          {messages.length === 0 ? (
+            /* Empty State Layout */
+            <div className="py-12 space-y-6 text-center select-none max-w-sm mx-auto">
+              <div className="size-12 rounded-2xl bg-primary/15 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse shadow-lg shadow-primary/5">
+                <Sparkles className="size-5.5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-sm text-foreground">Interactive Repository Chat</h3>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Ask natural language questions about files, architecture, modules, or configurations.
+                </p>
               </div>
 
-              {/* Code Body */}
-              <div className="flex-1 overflow-auto p-4 select-text">
-                {isLoadingFile ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2">
-                    <Loader2 className="size-6 text-primary animate-spin" />
-                    <span className="text-xs text-muted-foreground font-mono">Loading contents...</span>
-                  </div>
-                ) : fileContents[selectedFilePath] ? (
-                  <div className="flex font-mono text-xs text-[#E2E8F0] min-w-max select-text">
-                    {/* Line numbers column */}
-                    <div className="text-muted-foreground/30 text-right pr-4 border-r border-border/10 select-none min-w-8 font-mono">
-                      {fileContents[selectedFilePath].split("\n").map((_, lineIdx) => (
-                        <div key={lineIdx} className="min-h-6 flex items-center justify-end font-mono">
-                          {lineIdx + 1}
-                        </div>
-                      ))}
-                    </div>
-                    {/* Code lines column */}
-                    <div className="flex-1 pl-4 font-mono select-text">
-                      {fileContents[selectedFilePath].split("\n").map((lineContent, lineIdx) => {
-                        const lineNumber = lineIdx + 1
-                        const isHighlighted =
-                          highlightedLines &&
-                          lineNumber >= highlightedLines.start &&
-                          lineNumber <= highlightedLines.end
-
-                        return (
-                          <div
-                            key={lineIdx}
-                            id={`line-${lineNumber}`}
-                            className={`min-h-6 flex items-center font-mono text-xs pl-2 pr-4 transition-all duration-300 select-text ${
-                              isHighlighted
-                                ? "bg-amber-500/10 border-l-2 border-amber-400 text-amber-100 font-bold"
-                                : "hover:bg-[#1A233C]/25"
-                            }`}
-                          >
-                            {lineContent || <span className="opacity-0"> </span>}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-xs text-muted-foreground/45 font-mono py-24 select-none">
-                    Empty file content
-                  </div>
-                )}
+              {/* Suggested Questions Grid Cards */}
+              <div className="space-y-2 pt-2">
+                <span className="text-[9px] uppercase font-bold text-muted-foreground/50 tracking-wider font-mono block">Suggested Questions</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {SUGGESTED_CARDS.map((card, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSend(card.text)}
+                      disabled={isSubmitting}
+                      className="flex items-center justify-between text-left px-3.5 py-2.5 bg-[#111622]/40 border border-border/15 hover:border-primary/45 hover:bg-[#1A233C]/20 text-[11px] text-muted-foreground hover:text-foreground rounded-xl transition-all font-mono leading-snug cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <span>{card.icon}</span>
+                        <span className="truncate">{card.title}</span>
+                      </span>
+                      <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none space-y-2 text-muted-foreground/40 font-mono">
-              <Terminal className="size-10 text-muted-foreground/20" />
-              <div className="text-xs font-bold text-foreground/45">No File Selected</div>
-              <div className="text-[10px]">Select a file from the explorer sidebar or click a citation to inspect contents.</div>
+            /* Message lists rendering */
+            <div className="space-y-6">
+              {messages.map((message) => {
+                const isAssistant = message.role === "assistant"
+                const isThinking = isAssistant && message.content === "Thinking..."
+
+                return (
+                  <div key={message.id} className={`flex gap-3 ${isAssistant ? "justify-start" : "justify-end"}`}>
+                    {isAssistant && (
+                      <div className="size-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 select-none">
+                        <Sparkles className="size-3.5" />
+                      </div>
+                    )}
+                    <div className="space-y-1.5 max-w-[88%] min-w-0">
+                      <div className="text-[9px] text-muted-foreground/45 font-bold uppercase tracking-wider select-none font-mono">
+                        {isAssistant ? "Assistant" : "User"}
+                      </div>
+                      <div className={`rounded-2xl p-4 text-[11px] leading-relaxed ${
+                        isAssistant ? "bg-[#111622]/30 border border-border/10 text-foreground" : "bg-primary/10 border border-primary/20 text-foreground"
+                      }`}>
+                        {isThinking ? (
+                          <ProgressiveLoader />
+                        ) : isAssistant ? (
+                          <Markdown content={message.content} />
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed font-sans">{message.content}</p>
+                        )}
+
+                        {/* Citations cards display list */}
+                        {isAssistant && !isThinking && message.sources && message.sources.length > 0 && (
+                          <div className="mt-4 pt-3.5 border-t border-border/10 space-y-2 select-none">
+                            <span className="text-[9px] uppercase font-bold text-muted-foreground/40 tracking-wider font-mono block">Citations Sources</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {message.sources.map((src, sIdx) => {
+                                const similarityPercentage = Math.round(src.similarity * 100)
+                                return (
+                                  <div
+                                    key={sIdx}
+                                    onClick={() => handleOpenCitation(src)}
+                                    className="bg-[#111622]/80 hover:bg-[#1E2538] border border-border/20 hover:border-primary/45 rounded-xl p-2.5 transition-all flex items-center justify-between gap-2 cursor-pointer font-mono text-[9px] text-muted-foreground hover:text-foreground"
+                                  >
+                                    <div className="min-w-0 space-y-0.5">
+                                      <div className="flex items-center gap-1 font-bold text-foreground">
+                                        <FileCode className="size-3 text-primary shrink-0" />
+                                        <span className="truncate">{src.filePath.split("/").pop()}</span>
+                                      </div>
+                                      <div>Lines {src.startLine}-{src.endLine}</div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <div className="font-bold text-emerald-400 font-mono">{similarityPercentage}%</div>
+                                      <div className="text-[8px] opacity-50">Match</div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={chatEndRef} />
             </div>
           )}
         </div>
 
+        {/* Sticky Chat Input Panel (Fixed-bottom) */}
+        <div className="border-t border-border/10 bg-[#0F1424]/90 p-4 shrink-0 select-none">
+          <div className="relative bg-[#111622]/90 border border-border/25 focus-within:border-primary/45 rounded-xl p-1.5 flex items-end gap-2 shadow-xl transition-all">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isSubmitting}
+              placeholder="Ask workspace queries..."
+              className="flex-1 bg-transparent border-none text-xs text-foreground focus:outline-none placeholder:text-muted-foreground/35 resize-none py-2 px-3 min-h-[36px] max-h-[160px] leading-relaxed"
+            />
+            <Button
+              onClick={() => handleSend()}
+              disabled={isSubmitting || !question.trim()}
+              className="bg-primary hover:bg-primary/95 text-white size-8.5 rounded-lg shrink-0 cursor-pointer p-0 disabled:opacity-50"
+            >
+              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            </Button>
+          </div>
+          <div className="text-center text-[9px] text-muted-foreground/35 mt-2 font-mono">
+            Enter to Send, Shift+Enter for newline
+          </div>
+        </div>
+      </section>
+
+      {/* Floating responsive tab bar selector for mobile screen toggles */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-[#111622] border border-border/30 px-3 py-2 rounded-2xl flex items-center gap-4 z-40 md:hidden shadow-2xl backdrop-blur-md">
+        <button
+          onClick={() => setActiveTab("explorer")}
+          className={`flex flex-col items-center gap-1 text-[9px] font-mono uppercase font-bold cursor-pointer ${activeTab === "explorer" ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <Folder className="size-4.5" />
+          <span>Files</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("chat")}
+          className={`flex flex-col items-center gap-1 text-[9px] font-mono uppercase font-bold cursor-pointer ${activeTab === "chat" ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <MessageSquare className="size-4.5" />
+          <span>Chat</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("code")}
+          className={`flex flex-col items-center gap-1 text-[9px] font-mono uppercase font-bold cursor-pointer ${activeTab === "code" ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <Code className="size-4.5" />
+          <span>Code</span>
+        </button>
       </div>
+
     </div>
   )
 }

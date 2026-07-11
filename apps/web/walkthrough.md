@@ -1,49 +1,56 @@
-# Walkthrough - Milestone 4.4 Repository Explorer & Clickable Source Viewer
+# Walkthrough - Milestone 4.5 Professional AI Workspace UI/UX Redesign
 
-The CodeAtlas platform has been upgraded to a fully integrated repository code explorer and RAG workspace. 
+The codebase chat view has been completely upgraded into a professional, dark-mode 3-column AI developer workspace layout.
 
 ## Files Created / Modified
-- **Repository Controller** ([apps/api/src/controllers/repository.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/repository.controller.ts)):
-  - Added `getRepositoryFiles` returning a sorted files/directories tree (ignoring `.git`, `node_modules`, etc.).
-  - Added `getRepositoryFileContent` to lazy-load file content safely (implementing directory traversal prevention checks).
-- **Repository Routes** ([apps/api/src/routes/repository.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/repository.routes.ts)):
-  - Mounted `/api/v1/repositories/:id/files` and `/api/v1/repositories/:id/file` endpoints.
 - **Custom Markdown** ([apps/web/src/components/Markdown.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/components/Markdown.tsx)):
-  - Removed unused linter properties/warnings (`_lang`, `inList`).
+  - Added support for Callout/Alert boxes (Info, Tips, Warnings).
+  - Added custom Dividers and structured HTML Table parsers.
 - **Chat Workspace Page** ([apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/repository/[id]/chat/page.tsx)):
-  - Replaced the interface with an IDE-style split panel: Left (File tree explorer), Center (Chat window), Right (File code viewer).
-  - Wired source citations to trigger a jump scrolling action: fetches target file content, scrolls to line range, and highlights lines in a yellow visual box.
-  - Implemented responsive tab bars for compact mobile screens.
-  - Resolved purity checks issues.
+  - Structured standard viewport-bounded layout `h-[calc(100vh-57px)] overflow-hidden` preventing main page scrolls.
+  - Divided elements into: Left (File tree, fixed search), Center (Code editor scrollable viewer), Right (Assistant).
+  - Built sticky footer chat inputs and repository metadata panels.
+  - Formatted progressive loader cycles.
+  - Re-mapped empty states with visual logos andSuggested question cards.
+  - Redesigned clickable source citations into cards showing line boundaries and similarity metrics.
 
 ---
 
-## Code Viewer Scrolling & Highlighting Flow
+## 3-Column IDE Layout Scrolling Hierarchy
 
 ```mermaid
 graph TD
-    User["User clicks a referenced source citation"]
-    Select["Set selectedFilePath state"]
-    LazyLoad["Lazy-load target file content (if not cached)"]
-    APIFile["GET /api/v1/repositories/:id/file?path=..."]
-    Highlight["Highlight line range in Right panel (bg-amber-500/10)"]
-    Scroll["Smooth scroll line into center viewport"]
+    Navbar["Fixed Top Header/Navbar (h-14)"]
+    Workspace["Workspace Pane (h-[calc(100vh-56px)] flex overflow-hidden)"]
+    LeftCol["Left: Explorer Sidebar (Independent Scroll)"]
+    CenterCol["Center: Code Editor (Independent Scroll)"]
+    RightCol["Right: AI Assistant (Flex Column)"]
+    RightScroll["Assistant Feed (Independent Scroll)"]
+    RightInput["Sticky Chat Input (Fixed Bottom)"]
 
-    User --> Select
-    Select --> LazyLoad
-    LazyLoad -- "Fetch content" --> APIFile
-    APIFile -- "Cache in state" --> Highlight
-    Highlight --> Scroll
+    Navbar --> Workspace
+    Workspace --> LeftCol
+    Workspace --> CenterCol
+    Workspace --> RightCol
+    RightCol --> RightScroll
+    RightCol --> RightInput
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify File Explorer Tree**:
-   - Access `/dashboard/repository/REPO_ID/chat` on desktop.
-   - Confirm that the Left panel displays folders and files recursively.
-   - Type in the explorer search box to verify lists filter correctly.
-2. **Verify Clickable Citations & Highlighting**:
-   - Click a citation button (e.g. `index.ts (1-35)`) under an assistant answer.
-   - Confirm that the right code pane opens the file, highlights the selected lines, and scrolls smoothly to center the code snippet.
+1. **Verify Independent Scrolling Panels**:
+   - Open `/dashboard/repository/REPO_ID/chat`.
+   - Scroll inside the File Tree explorer, the Code Viewer, and the Chat Feed respectively.
+   - Confirm that only the focused panel scrolls, while the main page container and the chat input remain sticky and visible.
+2. **Verify Citations Cards**:
+   - Ask a question to generate citations (e.g. `Explain routing`).
+   - Observe the source citations render as detailed cards displaying line ranges and similarity metrics.
+   - Click a citation card to verify it loads the referenced code and highlights it.
+3. **Verify Progressive Thinking Loader**:
+   - Send any query in the input and observe the progress bar transition between:
+     - `🤖 Thinking...`
+     - `🔍 Searching repository chunks...`
+     - `📂 Retrieving relevant code context...`
+     - `✍️ Generating answer...`
