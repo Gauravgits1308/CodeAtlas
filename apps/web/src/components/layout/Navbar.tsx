@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { Menu, X, ArrowRight } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Show, UserButton, useAuth } from "@clerk/nextjs"
+import { Show, UserButton } from "@clerk/nextjs"
 import { usePathname } from "next/navigation"
 import { Logo } from "./Logo"
 import { buttonVariants } from "@/components/ui/button"
@@ -16,8 +16,6 @@ export function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
   const pathname = usePathname()
-  const { userId } = useAuth()
-  const isAuthenticated = !!userId
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -34,8 +32,10 @@ export function Navbar() {
   const navLinks = [
     { name: "Home", href: "/" },
     { name: "Features", href: "/#features" },
+    { name: "About Us", href: "#about" },
+    { name: "Documentation", href: "#documentation" },
     { name: "Pricing", href: "#", badge: "Soon" },
-    ...(isAuthenticated ? [{ name: "Dashboard", href: "/dashboard" }] : []),
+    { name: "Contact Us", href: "#contact" },
   ]
 
   return (
@@ -48,20 +48,20 @@ export function Navbar() {
       )}
     >
       <Container>
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-16 items-center justify-between px-4 sm:px-6">
           {/* Logo */}
           <div className="flex items-center">
             <Logo />
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 href={link.href}
                 className={cn(
-                  "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1.5",
+                  "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1.5 hover:-translate-y-0.5 transform duration-200",
                   pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground",
                   link.badge && "pointer-events-none"
                 )}
@@ -83,7 +83,7 @@ export function Navbar() {
                 href="/sign-in"
                 className={cn(
                   buttonVariants({ variant: "ghost", size: "sm" }),
-                  "text-muted-foreground hover:text-foreground cursor-pointer"
+                  "text-muted-foreground hover:text-foreground cursor-pointer rounded-xl"
                 )}
               >
                 Sign In
@@ -92,7 +92,7 @@ export function Navbar() {
                 href="/sign-up"
                 className={cn(
                   buttonVariants({ size: "sm" }),
-                  "bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group cursor-pointer"
+                  "bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group cursor-pointer rounded-xl px-4"
                 )}
               >
                 Get Started
@@ -100,7 +100,19 @@ export function Navbar() {
               </Link>
             </Show>
             <Show when="signed-in">
-              <UserButton />
+              <div className="flex items-center gap-4">
+                <Link
+                  href="/dashboard"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "border-border/50 bg-[#111827]/10 hover:bg-muted/40 hover:text-foreground text-xs font-semibold rounded-xl px-4 cursor-pointer transition-all flex items-center gap-1.5"
+                  )}
+                >
+                  <span>Dashboard</span>
+                  <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+                </Link>
+                <UserButton />
+              </div>
             </Show>
           </div>
 
@@ -155,7 +167,7 @@ export function Navbar() {
                     href="/sign-in"
                     className={cn(
                       buttonVariants({ variant: "outline" }),
-                      "w-full text-muted-foreground hover:text-foreground flex items-center justify-center h-10"
+                      "w-full text-muted-foreground hover:text-foreground flex items-center justify-center h-10 rounded-xl"
                     )}
                     onClick={() => setIsOpen(false)}
                   >
@@ -165,7 +177,7 @@ export function Navbar() {
                     href="/sign-up"
                     className={cn(
                       buttonVariants({ variant: "default" }),
-                      "w-full bg-primary hover:bg-primary/95 text-white flex items-center justify-center h-10"
+                      "w-full bg-primary hover:bg-primary/95 text-white flex items-center justify-center h-10 rounded-xl"
                     )}
                     onClick={() => setIsOpen(false)}
                   >
@@ -173,9 +185,22 @@ export function Navbar() {
                   </Link>
                 </Show>
                 <Show when="signed-in">
-                  <div className="flex items-center justify-between px-2 py-1.5 border border-border/40 rounded-lg bg-card/20">
-                    <span className="text-xs font-semibold text-muted-foreground">My Profile</span>
-                    <UserButton />
+                  <div className="flex flex-col gap-3">
+                    <Link
+                      href="/dashboard"
+                      className={cn(
+                        buttonVariants({ variant: "outline" }),
+                        "w-full border-border/50 text-foreground flex items-center justify-center gap-1.5 h-10 rounded-xl"
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Dashboard
+                      <ArrowRight className="size-3.5" />
+                    </Link>
+                    <div className="flex items-center justify-between px-3 py-2 border border-border/40 rounded-xl bg-card/20">
+                      <span className="text-xs font-semibold text-muted-foreground">My Profile</span>
+                      <UserButton />
+                    </div>
                   </div>
                 </Show>
               </div>
