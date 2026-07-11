@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { GitHubController } from "../controllers/github.controller";
-import { GitHubService } from "../services/github.service";
+import { GitHubService } from "../services/github/github.service";
 import { requireAuth } from "../middleware/auth.middleware";
 
 const router = Router();
 
-// Dependency injection instantiations
+// Inject newly created github service strategy
 const githubService = new GitHubService();
 const githubController = new GitHubController(githubService);
 
