@@ -1,63 +1,63 @@
-# Walkthrough - Milestone 3.3.6 Repository Indexing Coverage Expansion
+# Walkthrough - Milestone 4.1 Semantic Search (RAG Foundation)
 
-The repository file extraction and analysis pipeline has been enhanced to index modern front-end web resources (HTML, CSS, SCSS, Sass, Less), JavaScript ecosystems (.mjs, .cjs), configurations (YAML, TOML, XML, GraphQL), SQL databases, and Markdown documentations comprehensively.
+The foundational semantic vector search system has been successfully implemented across the repository, service, and controller layers, exposing a new REST API endpoint `/api/v1/search`.
 
-## Files Modified
-- **Prisma Schema** ([apps/api/prisma/schema.prisma](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/prisma/schema.prisma)):
-  - Added optional `classification` text column to the `CodeChunk` model definition.
-- **File Extraction Service** ([apps/api/src/services/file-extraction.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/file-extraction.service.ts)):
-  - Configured wide extension maps matching modern web design and deployment systems.
-  - Implemented lightweight `FileClassification` categorization (`SOURCE_CODE`, `MARKUP`, `STYLESHEET`, `CONFIGURATION`, `DOCUMENTATION`).
-  - Added strict ignoring patterns for secrets (`.env`, `.env.local` etc.) and binary assets (`.png`, `.jpg`, `.pdf` etc.).
-  - Configured structured Winston logs details:
-    * `"Extracted: X Source Code Files, Y HTML Files, Z CSS Files, A Configuration Files, B Documentation Files. Total Files Indexed: C"`
-- **Repository Analysis Service** ([apps/api/src/services/repository-analysis.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-analysis.service.ts)):
-  - Synced file extension map and ignored paths logic to ensure accurate file line counting and languages metrics aggregates.
-- **Code Chunk Repository** ([apps/api/src/repositories/code-chunk.repository.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/repositories/code-chunk.repository.ts)):
-  - Extended `CreateChunkInput` to save the classification field into PostgreSQL database tables.
-- **Repository Processing Service** ([apps/api/src/services/repository-processing.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-processing.service.ts)):
-  - Modified the create call payload to pass classification values along.
-- **Repository Controller** ([apps/api/src/controllers/repository.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/repository.controller.ts)):
-  - Configured code chunk classification counts grouping inside the repository API queries.
-- **Dashboard Types** ([apps/web/src/features/dashboard/types.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/features/dashboard/types.ts)) & **Dashboard Page** ([apps/web/src/app/(dashboard)/dashboard/page.tsx](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/web/src/app/(dashboard)/dashboard/page.tsx)):
-  - Display detailed file classifications breakdown directly within the Repository Indexing info box.
+## Files Created / Modified
+- **Search Repository** ([apps/api/src/repositories/search.repository.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/repositories/search.repository.ts)):
+  - Implemented pgvector raw parameterized queries to calculate cosine similarity similarity ranks (`1 - (e.embedding <=> CAST(vector AS vector))`).
+- **Repository Search Service** ([apps/api/src/services/repository-search.service.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/services/repository-search.service.ts)):
+  - Integrates `EmbeddingService` to encode the raw string query and filters database records matching `COMPLETED` indexed repositories.
+- **Search Controller** ([apps/api/src/controllers/search.controller.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/controllers/search.controller.ts)):
+  - Performs incoming request schema validation (rejecting empty queries, missing repository IDs, and invalid limit numbers).
+- **Search Routes** ([apps/api/src/routes/search.routes.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/routes/search.routes.ts)):
+  - Declares the REST route `POST /` mapped to the search handler protected by Clerk session checks.
+- **App Main Bootstrap** ([apps/api/src/index.ts](file:///Users/gauravgupta/Desktop/CodeAtlas/apps/api/src/index.ts)):
+  - Registered `/api/v1/search` route endpoints.
 
 ---
 
-## File Classification & Flow
+## Semantic Search Pipeline
 
 ```mermaid
 graph TD
-    RepoClone["Local Cloned Repo (storage/repositories)"]
-    ExtractServ["FileExtractionService.extractFiles()"]
-    FilterClassify["Classify (.ts -> SOURCE_CODE, .html -> MARKUP)"]
-    IgnoreFilter["Filter out Secrets/Binary Assets"]
-    LogCounts["Log category file tallies to console"]
-    Chunking["ChunkingService.chunkFile()"]
-    DBSave["Save to PostgreSQL with classification column"]
-    Dashboard["Dashboard lists classified file breakdowns"]
+    Client["Client POST Request /api/v1/search"]
+    Controller["SearchController.search()"]
+    EmbedService["EmbeddingService.generateEmbedding()"]
+    SearchRepo["SearchRepository.searchSimilarChunks()"]
+    pgvector["pgvector Cosine Distance Query (<=>)"]
+    RankedResults["Ranked JSON Code Chunks array"]
 
-    RepoClone --> ExtractServ
-    ExtractServ --> FilterClassify
-    ExtractServ --> IgnoreFilter
-    FilterClassify & IgnoreFilter --> LogCounts
-    FilterClassify --> Chunking
-    Chunking --> DBSave
-    DBSave --> Dashboard
+    Client --> Controller
+    Controller -- "1. Validate query & limit" --> EmbedService
+    EmbedService -- "2. Generate query vector" --> SearchRepo
+    SearchRepo -- "3. Query PostgreSQL e.embedding" --> pgvector
+    pgvector -- "4. Sort by similarity DESC" --> RankedResults
+    RankedResults --> Client
 ```
 
 ---
 
 ## Verification & Testing Instructions
 
-1. **Verify Logging Breakdown Output**:
-   - Access the dashboard page at `/dashboard` and trigger a **Sync** operation on a repository.
-   - Confirm that the backend log prints:
-     * `Extracted: X Source Code Files`
-     * `Y HTML Files`
-     * `Z CSS Files`
-     * `A Configuration Files`
-     * `B Documentation Files`
-     * `Total Files Indexed: C`
-2. **Verify Dashboard Metadata Breakdown**:
-   - Verify that the card's `Repository Indexing` block lists the counts for Source Code, Markup, Stylesheets, Configuration, and Documentation.
+1. **Verify Endpoint Response structure**:
+   - Make a search query request using any authenticated client session:
+     ```bash
+     curl -X POST http://localhost:5001/api/v1/search \
+       -H "Content-Type: application/json" \
+       -d '{"repositoryId": "REPO_UUID", "query": "database connection", "limit": 5}'
+     ```
+   - Check that the returned JSON matches:
+     ```json
+     {
+       "success": true,
+       "results": [
+         {
+           "filePath": "src/database.ts",
+           "startLine": 1,
+           "endLine": 12,
+           "content": "const prisma = ...",
+           "similarity": 0.892
+         }
+       ]
+     }
+     ```
