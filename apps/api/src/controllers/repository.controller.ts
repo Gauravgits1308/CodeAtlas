@@ -147,49 +147,6 @@ export class RepositoryController {
     });
   });
 
-  cloneRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const userId = req.auth.userId;
-    const { id } = req.params;
-
-    const repository = await this.repositoryService.cloneRepository(id, userId);
-
-    res.status(200).json({
-      success: true,
-      message: "Repository cloned successfully.",
-      repository: {
-        id: repository.id,
-        name: repository.name,
-        fullName: repository.fullName,
-        status: repository.status,
-        lastSyncedAt: repository.lastSyncedAt,
-      },
-    });
-  });
-
-  analyzeRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const userId = req.auth.userId;
-    const { id } = req.params;
-
-    const metrics = await this.repositoryService.analyzeRepository(id, userId);
-
-    res.status(200).json({
-      success: true,
-      metrics: {
-        id: metrics.id,
-        repositoryId: metrics.repositoryId,
-        linesCount: metrics.linesCount,
-        filesCount: metrics.filesCount,
-        languages: metrics.languages,
-        complexityScore: metrics.complexityScore,
-        dependencyCount: metrics.dependencyCount,
-        largestFiles: metrics.largestFiles,
-        largestDirectories: metrics.largestDirectories,
-        averageFileSize: metrics.averageFileSize,
-        documentationCoverage: metrics.documentationCoverage,
-        updatedAt: metrics.updatedAt,
-      },
-    });
-  });
 
   processRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const userId = req.auth.userId;

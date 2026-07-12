@@ -19,12 +19,6 @@ router.get("/", requireAuth, repositoryController.getUserRepositories);
 // POST /api/v1/repositories/import
 router.post("/import", requireAuth, repositoryController.importRepositories);
 
-// POST /api/v1/repositories/:id/clone
-router.post("/:id/clone", requireAuth, repositoryController.cloneRepository);
-
-// POST /api/v1/repositories/:id/analyze
-router.post("/:id/analyze", requireAuth, repositoryController.analyzeRepository);
-
 // POST /api/v1/repositories/:id/process
 router.post("/:id/process", requireAuth, repositoryController.processRepository);
 
