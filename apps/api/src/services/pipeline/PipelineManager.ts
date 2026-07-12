@@ -8,6 +8,8 @@ import { ChunkTask } from "./tasks/ChunkTask";
 import { EmbeddingTask } from "./tasks/EmbeddingTask";
 import { MetricTask } from "./tasks/MetricTask";
 import { HealthTask } from "./tasks/HealthTask";
+import * as fs from "fs";
+import * as path from "path";
  
 export class PipelineManager {
   private repositoryId: string;
@@ -67,7 +69,36 @@ export class PipelineManager {
   async run(): Promise<void> {
     this.startHeartbeat();
     const startTime = Date.now();
+ 
+    logger.info(`[Pipeline] Starting: Queue`);
+    logger.info(`[Pipeline] Completed: Queue`);
     logger.info(`[Pipeline] Started`);
+ 
+    const summary = {
+      Clone: "not started",
+      Extract: "not started",
+      Chunk: "not started",
+      Embedding: "not started",
+      Metrics: "not started",
+      Health: "not started",
+    };
+ 
+    const printSummary = () => {
+      const totalTime = Date.now() - startTime;
+      logger.info(`
+=========================================
+Pipeline Summary
+Repository: ${this.repositoryId}
+Clone: ${summary.Clone}
+Extract: ${summary.Extract}
+Chunk: ${summary.Chunk}
+Embedding: ${summary.Embedding}
+Metrics: ${summary.Metrics}
+Health: ${summary.Health}
+Total Time: ${totalTime} ms
+=========================================
+      `);
+    };
  
     // Reset database state to QUEUED
     await prisma.repository.update({
@@ -134,19 +165,55 @@ export class PipelineManager {
           currentMessage: displayMessage,
         });
  
-        if (task.name === "CLONING") logger.info(`[Repository: ${this.repositoryId}] Cloning started`);
-        else if (task.name === "EXTRACTING") logger.info(`[Repository: ${this.repositoryId}] Extraction started`);
-        else if (task.name === "CHUNKING") logger.info(`[Repository: ${this.repositoryId}] Chunking started`);
-        else if (task.name === "GENERATING_EMBEDDINGS") logger.info(`[Repository: ${this.repositoryId}] Embedding generation started`);
-        else if (task.name === "CALCULATING_METRICS") logger.info(`[Repository: ${this.repositoryId}] Metrics calculation started`);
-        else if (task.name === "AI_HEALTH_ANALYSIS") logger.info(`[Repository: ${this.repositoryId}] AI Health analysis started`);
-        logger.info(`[PipelineManager] [${task.name}] Started`);
+        let stageLabel = "";
+        let failedAtString = "UNKNOWN";
+        if (task.name === "CLONING") {
+          stageLabel = "Clone Repository";
+          failedAtString = "CLONE_REPOSITORY";
+        } else if (task.name === "EXTRACTING") {
+          stageLabel = "Extract Files";
+          failedAtString = "FILE_EXTRACTION";
+        } else if (task.name === "CHUNKING") {
+          stageLabel = "Chunk Files";
+          failedAtString = "FILE_CHUNKING";
+        } else if (task.name === "GENERATING_EMBEDDINGS") {
+          stageLabel = "Generate Embeddings";
+          failedAtString = "GENERATING_EMBEDDINGS";
+        } else if (task.name === "CALCULATING_METRICS") {
+          stageLabel = "Calculate Metrics";
+          failedAtString = "CALCULATING_METRICS";
+        } else if (task.name === "AI_HEALTH_ANALYSIS") {
+          stageLabel = "Repository Health";
+          failedAtString = "REPOSITORY_HEALTH";
+        }
+ 
+        logger.info(`[Pipeline] Starting: ${stageLabel}`);
         
         try {
-          await task.execute(this.ctx);
-          
-          const taskDuration = (Date.now() - taskStartTime) / 1000;
-          logger.info(`[PipelineManager] [${task.name}] Completed in ${taskDuration.toFixed(2)} seconds`);
+          if (task.name === "CLONING") {
+            await task.execute(this.ctx);
+            logger.info(`[Pipeline] Completed: ${stageLabel}`);
+            summary.Clone = "✅";
+ 
+            // Explicit clone verification stage
+            logger.info(`[Pipeline] Starting: Verify Clone`);
+            const repoPath = path.join(__dirname, "../../../../../storage/repositories", this.repositoryId);
+            const gitPath = path.join(repoPath, ".git");
+            if (!fs.existsSync(repoPath) || !fs.existsSync(gitPath)) {
+              failedAtString = "CLONE_VERIFICATION";
+              throw new Error("Clone Verification Failed: Repository checkout directory or .git metadata is missing.");
+            }
+            logger.info(`[Pipeline] Completed: Verify Clone`);
+          } else {
+            await task.execute(this.ctx);
+            logger.info(`[Pipeline] Completed: ${stageLabel}`);
+ 
+            if (task.name === "EXTRACTING") summary.Extract = "✅";
+            else if (task.name === "CHUNKING") summary.Chunk = "✅";
+            else if (task.name === "GENERATING_EMBEDDINGS") summary.Embedding = "✅";
+            else if (task.name === "CALCULATING_METRICS") summary.Metrics = "✅";
+            else if (task.name === "AI_HEALTH_ANALYSIS") summary.Health = "✅";
+          }
  
           this.ctx.completedStages.push(task.name);
  
@@ -159,49 +226,63 @@ export class PipelineManager {
           });
         } catch (taskErr: any) {
           const errMsg = taskErr.message || "Unknown error occurred.";
-          logger.error(`[PipelineManager] [${task.name}] Failed: ${errMsg}`);
-          
-          this.ctx.failedStage = task.name;
-          this.ctx.failureReason = errMsg;
+          const elapsed = Date.now() - taskStartTime;
  
-          // Determine critical vs optional failure
-          const isCritical = ["CLONING", "EXTRACTING", "CHUNKING"].includes(task.name);
-          if (isCritical) {
-            throw taskErr;
-          } else {
-            // Optional stage failed -> isolate failure, update status to PARTIALLY_INDEXED and continue or stop gracefully
-            logger.warn(`[PipelineManager] Isolate failure: optional task ${task.name} failed, marking repository as PARTIALLY_INDEXED`);
-            
-            this.ctx.duration = Math.round((Date.now() - startTime) / 1000);
-            await progressService.updateProgress(this.repositoryId, {
-              errorMessage: `Optional stage ${task.name} failed: ${errMsg}`,
-              finishedAt: new Date(),
-            });
+          // Structured logging of error
+          logger.error(`[Pipeline Error] Repository ID: ${this.repositoryId}`);
+          logger.error(`[Pipeline Error] Stage Name: ${stageLabel}`);
+          logger.error(`[Pipeline Error] Error Stack: ${taskErr.stack || taskErr}`);
+          logger.error(`[Pipeline Error] Elapsed Time: ${elapsed} ms`);
  
-            await prisma.repository.update({
-              where: { id: this.repositoryId },
-              data: { status: "PARTIALLY_INDEXED" },
-            });
-            logger.info(`[PipelineManager] [Repository: ${this.repositoryId}] Repository status transitioned to: PARTIALLY_INDEXED`);
- 
-            await prisma.repositoryProcessingStatus.update({
-              where: { repositoryId: this.repositoryId },
-              data: {
-                failedStage: this.ctx.failedStage,
-                errorMessage: `Optional stage ${task.name} failed: ${errMsg}`,
-                duration: this.ctx.duration,
-              },
-            });
-            
-            this.stopHeartbeat();
-            return;
+          if (task.name === "CLONING") {
+            summary.Clone = "❌";
+          } else if (task.name === "EXTRACTING") {
+            summary.Extract = "❌";
+          } else if (task.name === "CHUNKING") {
+            summary.Chunk = "❌";
+          } else if (task.name === "GENERATING_EMBEDDINGS") {
+            summary.Embedding = "❌";
+          } else if (task.name === "CALCULATING_METRICS") {
+            summary.Metrics = "❌";
+          } else if (task.name === "AI_HEALTH_ANALYSIS") {
+            summary.Health = "❌";
           }
+ 
+          const failMsg = `FAILED_AT = ${failedAtString}`;
+          this.ctx.failedStage = task.name;
+          this.ctx.failureReason = failMsg;
+ 
+          // Immediately update database status to FAILED with the exact stage name
+          await progressService.updateProgress(this.repositoryId, {
+            errorMessage: failMsg,
+            finishedAt: new Date(),
+          });
+ 
+          await prisma.repository.update({
+            where: { id: this.repositoryId },
+            data: { status: "FAILED" },
+          });
+          logger.info(`[PipelineManager] [Repository: ${this.repositoryId}] Repository status transitioned to: FAILED`);
+ 
+          await prisma.repositoryProcessingStatus.update({
+            where: { repositoryId: this.repositoryId },
+            data: {
+              failedStage: task.name,
+              errorMessage: failMsg,
+              duration: Math.round((Date.now() - startTime) / 1000),
+              finishedAt: new Date(),
+            },
+          });
+ 
+          printSummary();
+          throw taskErr; // never swallow exception
         }
       }
  
       // If all tasks complete successfully -> READY
       this.ctx.duration = Math.round((Date.now() - startTime) / 1000);
  
+      logger.info(`[Pipeline] Starting: Completed`);
       await progressService.updateProgress(this.repositoryId, {
         currentStage: "Repository Ready",
         stageProgress: 100.0,
@@ -222,10 +303,13 @@ export class PipelineManager {
           finishedAt: new Date(),
         },
       });
+      logger.info(`[Pipeline] Completed: Completed`);
  
       logger.info(`[Repository: ${this.repositoryId}] Repository ready`);
       logger.info(`[PipelineManager] Pipeline execution completed successfully in ${this.ctx.duration} seconds`);
+      printSummary();
     } catch (err: any) {
+      // In case any uncaught error outside the loop propagates
       const errMsg = err.message || "Unknown pipeline error.";
       logger.error(`[PipelineManager] Pipeline execution crashed: ${errMsg}`, err);
  
@@ -251,6 +335,8 @@ export class PipelineManager {
           finishedAt: new Date(),
         },
       });
+      printSummary();
+      throw err;
     } finally {
       this.stopHeartbeat();
     }
