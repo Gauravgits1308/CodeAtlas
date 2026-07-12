@@ -31,3 +31,5 @@ export const config = {
 if (!config.databaseUrl) {
   console.warn("WARNING: DATABASE_URL environment variable is not defined.")
 }
+ 
+export const REPOSITORY_STORAGE_PATH = path.resolve(__dirname, "../../../../storage/repositories");

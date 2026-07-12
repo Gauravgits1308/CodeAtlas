@@ -38,7 +38,8 @@ export class ExtractTask implements PipelineTask {
     const startTime = Date.now();
     logger.info(`[ExtractTask] Started for repository ${ctx.repositoryId}`);
  
-    const repoPath = path.join(__dirname, "../../../../../storage/repositories", ctx.repositoryId);
+    const { REPOSITORY_STORAGE_PATH } = await import("../../../config");
+    const repoPath = path.join(REPOSITORY_STORAGE_PATH, ctx.repositoryId);
  
     try {
       const filePaths: string[] = [];

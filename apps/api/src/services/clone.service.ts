@@ -3,6 +3,7 @@ import { RepositoryRepository } from "../repositories/repository.repository";
 import * as fs from "fs";
 import * as path from "path";
 import { logger } from "../utils/logger";
+import { REPOSITORY_STORAGE_PATH } from "../config";
 
 export class CloneService {
   constructor(
@@ -11,7 +12,7 @@ export class CloneService {
   ) { }
 
   async cloneRepository(repositoryId: string, cloneUrl: string): Promise<void> {
-    const storagePath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+    const storagePath = path.join(REPOSITORY_STORAGE_PATH, repositoryId);
 
     // Create the storage directories automatically if missing
     const parentDir = path.dirname(storagePath);

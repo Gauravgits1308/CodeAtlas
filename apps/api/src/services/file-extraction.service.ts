@@ -103,12 +103,14 @@ function classifyFile(fileName: string): FileClassification | null {
   return null;
 }
 
+import { REPOSITORY_STORAGE_PATH } from "../config";
+ 
 export class FileExtractionService {
   /**
    * Recursively walks a cloned repository folder and extracts content from supported text code files.
    */
   extractFiles(repositoryId: string): ExtractedFile[] {
-    const repoPath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+    const repoPath = path.join(REPOSITORY_STORAGE_PATH, repositoryId);
 
     if (!fs.existsSync(repoPath)) {
       throw new AppError("Repository directory does not exist locally.", 400);

@@ -32,7 +32,8 @@ export class MetricTask implements PipelineTask {
     logger.info(`[Analysis] Started`);
     logger.info(`[MetricTask] Started for repository ${ctx.repositoryId}`);
  
-    const repoPath = path.join(__dirname, "../../../../../storage/repositories", ctx.repositoryId);
+    const { REPOSITORY_STORAGE_PATH } = await import("../../../config");
+    const repoPath = path.join(REPOSITORY_STORAGE_PATH, ctx.repositoryId);
  
     try {
       const candidates: { fullPath: string; relativePath: string; name: string }[] = [];

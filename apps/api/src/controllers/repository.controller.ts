@@ -7,6 +7,7 @@ import { RepositoryJobService } from "../services/repository-job.service";
 import { asyncHandler, AppError } from "../utils/errors";
 import { prisma } from "../database";
 import { logger } from "../utils/logger";
+import { REPOSITORY_STORAGE_PATH } from "../config";
 
 export class RepositoryController {
   private repositoryJobService: RepositoryJobService;
@@ -183,7 +184,7 @@ export class RepositoryController {
       throw new AppError("Repository not found or access denied.", 404);
     }
 
-    const storagePath = path.join(__dirname, "../../../../storage/repositories", id);
+    const storagePath = path.join(REPOSITORY_STORAGE_PATH, id);
     if (!fs.existsSync(storagePath)) {
       throw new AppError("Repository files not found on disk. Please trigger sync.", 404);
     }
@@ -223,7 +224,7 @@ export class RepositoryController {
       throw new AppError("Repository not found or access denied.", 404);
     }
 
-    const storagePath = path.join(__dirname, "../../../../storage/repositories", id);
+    const storagePath = path.join(REPOSITORY_STORAGE_PATH, id);
     const targetFilePath = path.join(storagePath, filePathQuery);
 
     const relative = path.relative(storagePath, targetFilePath);
@@ -285,7 +286,7 @@ export class RepositoryController {
       const deletedConversations = await prisma.conversation.deleteMany({ where: { repositoryId } });
 
       // 2. Delete Health Reports / cache files
-      const apiStoragePath = path.join(process.cwd(), "storage", "repositories", repositoryId);
+      const apiStoragePath = path.join(REPOSITORY_STORAGE_PATH, repositoryId);
       if (fs.existsSync(apiStoragePath)) {
         fs.rmSync(apiStoragePath, { recursive: true, force: true });
       }
@@ -300,7 +301,7 @@ export class RepositoryController {
       const deletedChunks = await prisma.codeChunk.deleteMany({ where: { repositoryId } });
 
       // 5. Delete Local Repository Folder
-      const gitStoragePath = path.join(__dirname, "../../../../storage/repositories", repositoryId);
+      const gitStoragePath = path.join(REPOSITORY_STORAGE_PATH, repositoryId);
       if (fs.existsSync(gitStoragePath)) {
         fs.rmSync(gitStoragePath, { recursive: true, force: true });
       }

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { RepositoryChatService } from "./repository-chat.service";
 import { logger } from "../utils/logger";
+import { REPOSITORY_STORAGE_PATH } from "../config";
 
 export interface HealthCategory {
   score: number;
@@ -41,7 +42,7 @@ export class RepositoryHealthService {
    * Generates or retrieves cached AI health report for a repository.
    */
   async getHealthReport(repositoryId: string, forceRefresh = false): Promise<HealthReport> {
-    const cacheDir = path.join(process.cwd(), "storage", "repositories", repositoryId);
+    const cacheDir = path.join(REPOSITORY_STORAGE_PATH, repositoryId);
     const cacheFile = path.join(cacheDir, "health_report.json");
 
     // Load from cache if valid and not force refreshing

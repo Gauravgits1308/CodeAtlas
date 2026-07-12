@@ -32,7 +32,8 @@ export class CloneTask implements PipelineTask {
     }
  
     // Explicit verification step after cloning
-    const repoPath = path.join(__dirname, "../../../../../storage/repositories", repo.id);
+    const { REPOSITORY_STORAGE_PATH } = await import("../../../config");
+    const repoPath = path.join(REPOSITORY_STORAGE_PATH, repo.id);
     const gitPath = path.join(repoPath, ".git");
  
     if (!fs.existsSync(repoPath)) {

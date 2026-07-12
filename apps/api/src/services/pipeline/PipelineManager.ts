@@ -197,7 +197,8 @@ Total Time: ${totalTime} ms
  
             // Explicit clone verification stage
             logger.info(`[Pipeline] Starting: Verify Clone`);
-            const repoPath = path.join(__dirname, "../../../../../storage/repositories", this.repositoryId);
+            const { REPOSITORY_STORAGE_PATH } = await import("../../config");
+            const repoPath = path.join(REPOSITORY_STORAGE_PATH, this.repositoryId);
             const gitPath = path.join(repoPath, ".git");
             if (!fs.existsSync(repoPath) || !fs.existsSync(gitPath)) {
               failedAtString = "CLONE_VERIFICATION";
