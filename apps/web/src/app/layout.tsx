@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "CodeAtlas - Understand Any Codebase Instantly",
+  title: "Revora - Engineering Intelligence Platform",
   description:
-    "CodeAtlas helps developers understand software repositories using AI-powered intelligence.",
-  keywords: ["CodeAtlas", "codebase intelligence", "semantic search", "developer documentation"],
+    "Revora helps developers understand software repositories using AI-powered intelligence.",
+  keywords: ["Revora", "codebase intelligence", "semantic search", "developer documentation"],
 }
 
 export default function RootLayout({
@@ -27,7 +27,28 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      localization={{
+        signUp: {
+          start: {
+            title: "Create your account",
+            subtitle: "Continue with GitHub to create your workspace.",
+          },
+        },
+        signIn: {
+          start: {
+            title: "Welcome back",
+            subtitle: "Continue with GitHub to access your workspace.",
+          },
+        },
+      }}
+      appearance={{
+        captcha: {
+          theme: "dark",
+          size: "flexible",
+        },
+      }}
+    >
       <html
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}

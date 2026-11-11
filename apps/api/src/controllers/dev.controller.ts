@@ -5,6 +5,7 @@ import { EmbeddingService } from "../services/ai/embedding.service";
 import { createAIProvider } from "../services/ai/providers/provider.factory";
 import { ChunkEmbeddingRepository } from "../repositories/chunk-embedding.repository";
 import { asyncHandler, AppError } from "../utils/errors";
+import { sanitizeForPostgres } from "../utils/sanitize";
 
 const embeddingService = new EmbeddingService(createAIProvider());
 const chunkEmbeddingRepository = new ChunkEmbeddingRepository();
@@ -69,6 +70,7 @@ export class DevController {
       // Generate embedding
       const embedding = await embeddingService.generateEmbedding(text);
 
+      const sanitizedText = sanitizeForPostgres(text);
       // Create a temporary chunk
       const chunk = await prisma.codeChunk.create({
         data: {
@@ -76,7 +78,7 @@ export class DevController {
           filePath: "dev-test.ts",
           startLine: 1,
           endLine: 1,
-          content: text,
+          content: sanitizedText,
         },
       });
 

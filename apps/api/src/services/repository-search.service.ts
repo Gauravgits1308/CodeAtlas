@@ -42,8 +42,16 @@ export class RepositorySearchService {
     }
 
     // 2. Verify repository is indexed
-    if (repo.status !== "COMPLETED") {
-      throw new AppError("Repository codebase is not fully indexed yet.", 400);
+    const allowedStatuses = [
+      "ANALYZING",
+      "COMPLETED",
+    ];
+
+    if (!allowedStatuses.includes(repo.status)) {
+      throw new AppError(
+        "Repository codebase is not fully indexed yet.",
+        400
+      );
     }
 
     // 3. Generate query embedding

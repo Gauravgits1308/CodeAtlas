@@ -4,7 +4,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { logger } from "../../../utils/logger";
 import { AppError } from "../../../utils/errors";
- 
+
 const EXTENSION_MAP: Record<string, string> = {
   ".ts": "TypeScript", ".tsx": "TypeScript", ".js": "JavaScript", ".jsx": "JavaScript",
   ".mjs": "JavaScript", ".cjs": "JavaScript", ".py": "Python", ".java": "Java",
@@ -14,27 +14,30 @@ const EXTENSION_MAP: Record<string, string> = {
   ".toml": "TOML", ".xml": "XML", ".graphql": "GraphQL", ".gql": "GraphQL",
   ".md": "Markdown", ".mdx": "Markdown",
 };
- 
+
 const IGNORED_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
   ".mp4", ".mov", ".pdf", ".zip", ".rar", ".7z", ".exe"
 ]);
 const IGNORED_FILENAMES = new Set([".env", ".env.local", ".env.production", ".env.development"]);
 const IGNORE_DIRS = new Set([".git", "node_modules", "dist", "build", ".next", "coverage", "out", "vendor"]);
- 
+
+// 2MB max file size limit to prevent Node heap OOM crashes
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+
 export class MetricTask implements PipelineTask {
   name = "CALCULATING_METRICS";
- 
+
   private codeMetricRepository = new CodeMetricRepository();
- 
+
   async execute(ctx: PipelineContext): Promise<void> {
     const startTime = Date.now();
     logger.info(`[Analysis] Started`);
     logger.info(`[MetricTask] Started for repository ${ctx.repositoryId}`);
- 
+
     const { REPOSITORY_STORAGE_PATH } = await import("../../../config");
     const repoPath = path.join(REPOSITORY_STORAGE_PATH, ctx.repositoryId);
- 
+
     try {
       const candidates: { fullPath: string; relativePath: string; name: string }[] = [];
       const walk = async (currentDir: string) => {
@@ -48,48 +51,59 @@ export class MetricTask implements PipelineTask {
           } else if (entry.isFile()) {
             const ext = path.extname(entry.name).toLowerCase();
             if (!IGNORED_FILENAMES.has(entry.name) && !IGNORED_EXTENSIONS.has(ext)) {
-              candidates.push({ fullPath, relativePath, name: entry.name });
+              try {
+                const stats = await fs.stat(fullPath);
+                if (stats.size <= MAX_FILE_SIZE_BYTES) {
+                  candidates.push({ fullPath, relativePath, name: entry.name });
+                }
+              } catch (statErr) {
+                logger.warn(`Failed to stat candidate file ${relativePath}: ${statErr}`);
+              }
             }
           }
         });
         await Promise.all(promises);
       };
- 
+
       await walk(repoPath);
-      logger.info(`[MetricTask] Analyzing metrics for ${candidates.length} files concurrently...`);
- 
+      logger.info(`[MetricTask] Analyzing metrics for ${candidates.length} candidate files in chunks of 50...`);
+
       let totalLines = 0;
       let totalBytes = 0;
       const languageLines: Record<string, number> = {};
       const fileList: { path: string; lines: number; size: number }[] = [];
       const dirFileCounts: Record<string, number> = {};
- 
-      const parsePromises = candidates.map(async (f) => {
-        try {
-          const stats = await fs.stat(f.fullPath);
-          totalBytes += stats.size;
- 
-          const ext = path.extname(f.name).toLowerCase();
-          const language = EXTENSION_MAP[ext];
-          let lines = 0;
- 
-          if (language) {
-            const content = await fs.readFile(f.fullPath, "utf-8");
-            lines = content.split(/\r?\n/).length;
-            totalLines += lines;
-            languageLines[language] = (languageLines[language] || 0) + lines;
-          }
- 
-          fileList.push({ path: f.relativePath, lines, size: stats.size });
-          const dirRelativePath = path.dirname(f.relativePath) || ".";
-          dirFileCounts[dirRelativePath] = (dirFileCounts[dirRelativePath] || 0) + 1;
-        } catch (err) {
-          logger.warn(`Skipped content analysis for file ${f.relativePath}: ${err}`);
-        }
-      });
- 
-      await Promise.all(parsePromises);
- 
+
+      const chunkSize = 50;
+      for (let i = 0; i < candidates.length; i += chunkSize) {
+        const batch = candidates.slice(i, i + chunkSize);
+        await Promise.all(
+          batch.map(async (f) => {
+            try {
+              const stats = await fs.stat(f.fullPath);
+              totalBytes += stats.size;
+
+              const ext = path.extname(f.name).toLowerCase();
+              const language = EXTENSION_MAP[ext];
+              let lines = 0;
+
+              if (language) {
+                const content = await fs.readFile(f.fullPath, "utf-8");
+                lines = content.split(/\r?\n/).length;
+                totalLines += lines;
+                languageLines[language] = (languageLines[language] || 0) + lines;
+              }
+
+              fileList.push({ path: f.relativePath, lines, size: stats.size });
+              const dirRelativePath = path.dirname(f.relativePath) || ".";
+              dirFileCounts[dirRelativePath] = (dirFileCounts[dirRelativePath] || 0) + 1;
+            } catch (err) {
+              logger.warn(`Skipped content analysis for file ${f.relativePath}: ${err}`);
+            }
+          })
+        );
+      }
+
       // Calculate language percentage splits
       const languagesList = Object.entries(languageLines)
         .map(([name, lines]) => {
@@ -97,19 +111,19 @@ export class MetricTask implements PipelineTask {
           return { name, percentage };
         })
         .sort((a, b) => b.percentage - a.percentage);
- 
+
       const largestFiles = fileList
         .sort((a, b) => b.lines - a.lines)
         .slice(0, 5)
         .map((f) => ({ path: f.path, lines: f.lines }));
- 
+
       const largestDirectories = Object.entries(dirFileCounts)
         .map(([dirPath, count]) => ({ path: dirPath, filesCount: count }))
         .sort((a, b) => b.filesCount - a.filesCount)
         .slice(0, 5);
- 
+
       const averageFileSize = candidates.length > 0 ? parseFloat((totalBytes / candidates.length).toFixed(2)) : 0.0;
- 
+
       // Dependency counts from root package.json if present
       let dependencyCount = 0;
       const pkgPath = path.join(repoPath, "package.json");
@@ -122,7 +136,7 @@ export class MetricTask implements PipelineTask {
       } catch {
         // Skip dependencies count if no package.json or invalid JSON format
       }
- 
+
       await this.codeMetricRepository.createOrUpdate({
         repositoryId: ctx.repositoryId,
         linesCount: totalLines,
@@ -133,9 +147,9 @@ export class MetricTask implements PipelineTask {
         averageFileSize,
         dependencyCount,
       });
- 
+
       logger.info(`[Analysis] Completed`);
- 
+
       const duration = (Date.now() - startTime) / 1000;
       logger.info(`[MetricTask] Completed in ${duration.toFixed(2)} seconds`);
     } catch (error: unknown) {

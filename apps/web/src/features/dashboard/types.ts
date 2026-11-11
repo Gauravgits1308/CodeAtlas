@@ -5,7 +5,7 @@ export interface Repository {
   url: string
   provider: "github" | "gitlab" | "bitbucket"
   isPrivate: boolean
-  status: "PENDING" | "QUEUED" | "CLONING" | "ANALYZING" | "INDEXING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  status: "PENDING" | "QUEUED" | "CLONING" | "ANALYZING" | "INDEXING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "STALLED"
   isArchived?: boolean
   lastSyncedAt?: string
   createdAt: string
@@ -32,6 +32,8 @@ export interface CodeMetric {
   languages: { name: string; percentage: number }[]
   complexityScore?: number
   dependencyCount?: number
+  averageFileSize?: number
+  documentationCoverage?: number
 }
 
 export interface RepositoryDetails extends Repository {

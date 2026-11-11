@@ -20,24 +20,36 @@ export class RepositoryController {
   }
 
   importRepositories = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const startTime = Date.now();
+    logger.info(`[IMPORT_REQ] [START] Request received at ${new Date().toISOString()}`);
+
     const userId = req.auth.userId;
     const { repositories } = req.body as { repositories?: ImportRepositoryPayload[] };
 
     if (!repositories || !Array.isArray(repositories)) {
+      logger.error(`[IMPORT_REQ] [VALIDATE_INPUT] Invalid payload shape`);
       return next(new AppError("Invalid payload shape: repositories list is required and must be an array.", 400));
     }
 
+    logger.info(`[IMPORT_REQ] [VALIDATE_INPUT] Input validated successfully. Count: ${repositories.length}`);
+
+    logger.info(`[IMPORT_REQ] [CREATE_DATABASE_RECORD] Creating repository database records...`);
     const imported = await this.repositoryService.importRepositories(userId, repositories);
- 
+    logger.info(`[IMPORT_REQ] [CREATE_DATABASE_RECORD] Created ${imported.length} database records.`);
+
     // Enqueue jobs for all newly imported repositories so they transition to QUEUED and process immediately
     for (const repo of imported) {
       try {
-        logger.info(`[RepositoryController] Triggering auto-enqueue for newly imported repository: ${repo.id}`);
-        await this.repositoryJobService.enqueueRepository(repo.id, userId);
+        logger.info(`[IMPORT_REQ] [ADD_JOB_TO_BULLMQ] Enqueuing job for repository: ${repo.id}`);
+        const jobId = await this.repositoryJobService.enqueueRepository(repo.id, userId);
+        logger.info(`[IMPORT_REQ] [ADD_JOB_TO_BULLMQ] Job successfully enqueued: ${jobId}`);
       } catch (enqueueErr) {
-        logger.error(`[RepositoryController] Failed to auto-enqueue repository ${repo.id} during import:`, enqueueErr);
+        logger.error(`[IMPORT_REQ] [ADD_JOB_TO_BULLMQ] Failed to auto-enqueue repository ${repo.id}:`, enqueueErr);
       }
     }
+
+    const elapsed = Date.now() - startTime;
+    logger.info(`[IMPORT_REQ] [RETURN_RESPONSE] Returning HTTP 201 Created in ${elapsed}ms`);
 
     res.status(201).json({
       success: true,
@@ -253,6 +265,33 @@ export class RepositoryController {
     });
   });
 
+  cancelRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    await this.repositoryJobService.cancelRepository(id, userId);
+
+    res.status(200).json({
+      success: true,
+      message: "Repository processing cancelled successfully.",
+      status: "CANCELLED",
+    });
+  });
+
+  retryRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    const jobId = await this.repositoryJobService.retryRepository(id, userId);
+
+    res.status(200).json({
+      success: true,
+      jobId,
+      message: "Repository processing retried successfully.",
+      status: "QUEUED",
+    });
+  });
+
   deleteRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const userId = req.auth.userId;
     const { id: repositoryId } = req.params;
@@ -269,10 +308,11 @@ export class RepositoryController {
       throw new AppError("Repository not found or access denied.", 404);
     }
 
-    // Worker Safety: Prevent deletion if currently processing
-    const processingStates = ["QUEUED", "CLONING", "ANALYZING", "PROCESSING"];
-    if (processingStates.includes(repository.status)) {
-      throw new AppError("Repository is currently processing. Wait until processing finishes.", 400);
+    // Cancel active BullMQ job and clean files prior to DB record deletion
+    try {
+      await this.repositoryJobService.cancelRepository(repositoryId, userId);
+    } catch (cancelErr) {
+      logger.warn(`Failed to cancel active job prior to deletion for ${repositoryId}: ${cancelErr}`);
     }
 
     const startTime = Date.now();
@@ -367,6 +407,124 @@ export class RepositoryController {
     res.status(200).json({
       success: true,
       message: "Repository restored successfully.",
+    });
+  });
+
+  getRepository = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.auth.userId;
+    const { id } = req.params;
+
+    if (!id || typeof id !== "string" || !id.trim()) {
+      throw new AppError("Repository ID is required.", 400);
+    }
+
+    interface RepositoryWithDetails {
+      id: string;
+      githubRepoId: string;
+      name: string;
+      fullName: string;
+      owner: string;
+      visibility: string;
+      defaultBranch: string;
+      cloneUrl: string;
+      htmlUrl: string;
+      description: string | null;
+      primaryLanguage: string | null;
+      stars: number;
+      forks: number;
+      watchers: number;
+      status: string;
+      lastSyncedAt: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      metrics?: {
+        linesCount: number;
+        filesCount: number;
+        complexityScore: number | null;
+        dependencyCount: number | null;
+        languages: unknown;
+      } | null;
+      _count?: {
+        chunks: number;
+      };
+      isArchived: boolean;
+    }
+
+    const repo = (await this.repositoryService.getRepositoryById(id, userId)) as RepositoryWithDetails | null;
+    if (!repo) {
+      throw new AppError("Repository not found or access denied.", 404);
+    }
+
+    const embeddingCount = await prisma.chunkEmbedding.count({
+      where: {
+        chunk: {
+          repositoryId: repo.id,
+        },
+      },
+    });
+
+    const classificationCounts = await prisma.codeChunk.groupBy({
+      by: ["classification"],
+      where: {
+        repositoryId: repo.id,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const classifications = {
+      SOURCE_CODE: 0,
+      MARKUP: 0,
+      STYLESHEET: 0,
+      CONFIGURATION: 0,
+      DOCUMENTATION: 0,
+    };
+
+    for (const group of classificationCounts) {
+      if (group.classification) {
+        const key = group.classification as keyof typeof classifications;
+        if (key in classifications) {
+          classifications[key] = group._count._all;
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      repository: {
+        id: repo.id,
+        githubRepoId: repo.githubRepoId,
+        name: repo.name,
+        fullName: repo.fullName,
+        owner: repo.owner,
+        visibility: repo.visibility,
+        defaultBranch: repo.defaultBranch,
+        cloneUrl: repo.cloneUrl,
+        htmlUrl: repo.htmlUrl,
+        description: repo.description,
+        primaryLanguage: repo.primaryLanguage,
+        stars: repo.stars,
+        forks: repo.forks,
+        watchers: repo.watchers,
+        status: repo.status,
+        lastSyncedAt: repo.lastSyncedAt,
+        createdAt: repo.createdAt,
+        updatedAt: repo.updatedAt,
+        metrics: repo.metrics
+          ? {
+              linesCount: repo.metrics.linesCount,
+              filesCount: repo.metrics.filesCount,
+              complexityScore: repo.metrics.complexityScore,
+              dependencyCount: repo.metrics.dependencyCount,
+              languages: repo.metrics.languages,
+            }
+          : null,
+        chunksCount: repo._count?.chunks || 0,
+        embeddingsCount: embeddingCount,
+        classifications,
+        isArchived: repo.isArchived,
+      },
     });
   });
 }

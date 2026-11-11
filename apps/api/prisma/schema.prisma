@@ -17,6 +17,8 @@ enum RepositoryStatus {
   COMPLETED
   PARTIALLY_INDEXED
   FAILED
+  CANCELLED
+  STALLED
 }
 
 model User {

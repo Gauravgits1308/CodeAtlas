@@ -35,6 +35,16 @@ export class UserRepository {
   }
 
   async upsert(data: { id: string; email: string; name?: string | null }): Promise<UserProfile> {
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+
+    if (existingByEmail && existingByEmail.id !== data.id) {
+      await prisma.user.delete({
+        where: { id: existingByEmail.id },
+      });
+    }
+
     return prisma.user.upsert({
       where: { id: data.id },
       update: {

@@ -5,7 +5,8 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/forgot-password(.*)",
-  "/verify-email(.*)"
+  "/verify-email(.*)",
+  "/sso-callback(.*)"
 ])
 
 export default clerkMiddleware(async (auth, request) => {
@@ -15,6 +16,7 @@ export default clerkMiddleware(async (auth, request) => {
 })
 
 export const config = {
+
   matcher: [
     // Skip Next.js internals and all static files, unless found in search params
     '/((?!_next|[^?]*\\.[\\w]+$|_next/image|favicon.ico).*)',

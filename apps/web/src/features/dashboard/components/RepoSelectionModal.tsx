@@ -2,14 +2,14 @@
 
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  X, 
-  Search, 
-  Lock, 
-  Globe, 
-  Star, 
-  GitFork, 
-  Check, 
+import {
+  X,
+  Search,
+  Lock,
+  Globe,
+  Star,
+  GitFork,
+  Check,
   Calendar,
   AlertCircle,
   FolderGit2,
@@ -105,7 +105,7 @@ export function RepoSelectionModal({ isOpen, onClose, onImportSuccess }: RepoSel
 
   const handleImport = async () => {
     if (selectedIds.size === 0 || isImporting) return
-    
+
     setIsImporting(true)
     const selectedRepos = repos.filter((r) => selectedIds.has(r.githubRepoId))
     const payloads = selectedRepos.map((repo) => ({
@@ -136,7 +136,7 @@ export function RepoSelectionModal({ isOpen, onClose, onImportSuccess }: RepoSel
         } else {
           toast.success(`Successfully imported ${response.imported} repositor${response.imported === 1 ? "y" : "ies"}.`)
         }
-        
+
         if (onImportSuccess) {
           onImportSuccess()
         }
@@ -211,7 +211,7 @@ export function RepoSelectionModal({ isOpen, onClose, onImportSuccess }: RepoSel
                   <span>Connect GitHub Repositories</span>
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  Select repositories to import and analyze in CodeAtlas
+                  Select repositories to import and analyze in Revora
                 </p>
               </div>
               <button

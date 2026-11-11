@@ -22,14 +22,17 @@ export const config = {
   openrouterBaseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
   openrouterEmbeddingModel: process.env.OPENROUTER_EMBEDDING_MODEL || "",
   openrouterChatModel: process.env.OPENROUTER_CHAT_MODEL || "",
+  geminiApiKey: process.env.GEMINI_API_KEY || "",
+  geminiChatModel: process.env.GEMINI_CHAT_MODEL || "gemini-2.5-flash-lite",
+  geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004",
   contactEmail: process.env.CONTACT_EMAIL || "gaurav.init13@gmail.com",
   resendApiKey: process.env.RESEND_API_KEY || "",
-  emailFrom: process.env.EMAIL_FROM || "CodeAtlas <onboarding@resend.dev>",
+  emailFrom: process.env.EMAIL_FROM || "Revora <onboarding@resend.dev>",
 }
 
 // Warn about missing database connections
 if (!config.databaseUrl) {
   console.warn("WARNING: DATABASE_URL environment variable is not defined.")
 }
- 
+
 export const REPOSITORY_STORAGE_PATH = path.resolve(__dirname, "../../../../storage/repositories");

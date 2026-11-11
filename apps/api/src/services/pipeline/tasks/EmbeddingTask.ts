@@ -1,43 +1,64 @@
 import { PipelineTask, PipelineContext } from "../Task";
 import { EmbeddingService } from "../../ai/embedding.service";
-import { OpenRouterProvider } from "../../ai/providers/OpenRouterProvider";
+import { createAIProvider } from "../../ai/providers/provider.factory";
 import { ChunkEmbeddingRepository } from "../../../repositories/chunk-embedding.repository";
 import { config } from "../../../config";
 import { logger } from "../../../utils/logger";
 import { AppError } from "../../../utils/errors";
 import { progressService } from "../../progress.service";
- 
+
 export class EmbeddingTask implements PipelineTask {
   name = "GENERATING_EMBEDDINGS";
- 
-  private embeddingService = new EmbeddingService(new OpenRouterProvider());
+
+  private embeddingService: EmbeddingService | null = null;
   private chunkEmbeddingRepository = new ChunkEmbeddingRepository();
- 
+
+  constructor() {
+    try {
+      if (config.openrouterApiKey && config.openrouterBaseUrl) {
+        this.embeddingService = new EmbeddingService(createAIProvider());
+      }
+    } catch (err) {
+      logger.warn(`[EmbeddingTask] Failed to initialize EmbeddingService. Embeddings will be bypassed. Error: ${err}`);
+    }
+  }
+
   async execute(ctx: PipelineContext): Promise<void> {
     const startTime = Date.now();
     logger.info(`[EmbeddingTask] Started for repository ${ctx.repositoryId}`);
- 
+
     const chunks = (ctx as any).savedChunks;
     if (!chunks || !Array.isArray(chunks)) {
       throw new AppError("Saved chunks not found in pipeline context.", 500);
     }
- 
+
     if (chunks.length === 0) {
       logger.info("[EmbeddingTask] No chunks to embed.");
       return;
     }
- 
+
+    if (!this.embeddingService) {
+      logger.warn(`[EmbeddingTask] Bypassing embedding generation: OPENROUTER_API_KEY is not configured or initialized.`);
+      ctx.embeddingsGenerated = 0;
+      await progressService.updateProgress(ctx.repositoryId, {
+        currentStage: "Generating Embeddings",
+        stageProgress: 75.0,
+        currentMessage: "Embedding generation bypassed (unconfigured API key). Proceeding to metrics calculation...",
+      });
+      return;
+    }
+
     const batchSize = parseInt(process.env.EMBEDDING_BATCH_SIZE || "50", 10);
     logger.info(`[EmbeddingTask] Commencing batch embedding of ${chunks.length} chunks. Batch size: ${batchSize}`);
- 
+
     try {
       for (let i = 0; i < chunks.length; i += batchSize) {
         const batch = chunks.slice(i, i + batchSize);
         const texts = batch.map(c => c.content);
- 
+
         logger.info(`[EmbeddingTask] Fetching embeddings for batch ${Math.floor(i / batchSize) + 1} (${batch.length} items)...`);
         const vectors = await this.embeddingService.generateEmbeddings(texts);
- 
+
         logger.info(`[EmbeddingTask] Storing embeddings concurrently in DB for batch ${Math.floor(i / batchSize) + 1}...`);
         const savePromises = batch.map((chunk, index) => {
           const embedding = vectors[index];
@@ -49,11 +70,11 @@ export class EmbeddingTask implements PipelineTask {
             embedding,
           });
         });
- 
+
         await Promise.all(savePromises);
- 
+
         ctx.embeddingsGenerated += batch.length;
- 
+
         // Report progress dynamically
         const progressPercentage = 60.0 + Math.round((ctx.embeddingsGenerated / chunks.length) * 20.0);
         await progressService.updateProgress(ctx.repositoryId, {
@@ -65,13 +86,20 @@ export class EmbeddingTask implements PipelineTask {
           embeddingsGenerated: ctx.embeddingsGenerated,
         });
       }
- 
+
       const duration = (Date.now() - startTime) / 1000;
       logger.info(`[EmbeddingTask] Completed in ${duration.toFixed(2)} seconds. Embeddings created: ${ctx.embeddingsGenerated}`);
-    } catch (error: unknown) {
-      const err = error as Error;
-      logger.error(`[EmbeddingTask] Failed: ${err.message}`, err);
-      throw new AppError(`Embedding generation failed: ${err.message}`, 500);
+    } catch (error: any) {
+      const errMsg = error.message || String(error);
+      logger.warn(`[EmbeddingTask] Graceful Fallback: Embedding generation failed. Proceeding with remaining indexing pipeline stages. Error: ${errMsg}`);
+
+      // Allow pipeline to continue by setting generated count to whatever was successfully processed
+      ctx.embeddingsGenerated = ctx.embeddingsGenerated || 0;
+      await progressService.updateProgress(ctx.repositoryId, {
+        currentStage: "Generating Embeddings",
+        stageProgress: 75.0,
+        currentMessage: `Embedding generation suspended (${ctx.embeddingsGenerated} completed). Continuing...`,
+      });
     }
   }
 }

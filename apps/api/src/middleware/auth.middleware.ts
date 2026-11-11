@@ -10,37 +10,82 @@ const userRepository = new UserRepository();
  * Protected route middleware ensuring Clerk session authentication,
  * and automatically synchronizing Clerk user profiles to the local database.
  */
-export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
-  if (!req.headers.authorization && req.query.token && typeof req.query.token === "string") {
+export const requireAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (
+    !req.headers.authorization &&
+    req.query.token &&
+    typeof req.query.token === "string"
+  ) {
     req.headers.authorization = `Bearer ${req.query.token}`;
   }
+
+  console.log("\n========== CLERK AUTH DEBUG ==========");
+  console.log("Path:", req.originalUrl);
+  console.log("Method:", req.method);
+
+  console.log(
+    "Authorization Header:",
+    req.headers.authorization
+      ? req.headers.authorization.substring(0, 40) + "..."
+      : "MISSING"
+  );
+
+  console.log(
+    "CLERK_SECRET_KEY:",
+    process.env.CLERK_SECRET_KEY
+      ? process.env.CLERK_SECRET_KEY.substring(0, 15) + "..."
+      : "MISSING"
+  );
+
+  console.log(
+    "CLERK_PUBLISHABLE_KEY:",
+    process.env.CLERK_PUBLISHABLE_KEY
+      ? process.env.CLERK_PUBLISHABLE_KEY.substring(0, 15) + "..."
+      : "MISSING"
+  );
+
   const auth = getAuth(req);
+
+  console.log("getAuth(req):", auth);
+  console.log("userId:", auth.userId);
+  console.log("sessionId:", auth.sessionId);
+  console.log("orgId:", auth.orgId);
+  console.log("======================================\n");
 
   if (!auth.userId) {
     return res.status(401).json({
       success: false,
       error: "Unauthorized",
+      debug: {
+        userId: auth.userId,
+        sessionId: auth.sessionId,
+      },
     });
   }
 
   const userId = auth.userId;
 
-  // Synchronize authenticated user profile to local database
   try {
     const clerkUser = await clerkClient.users.getUser(userId);
+
     const email = clerkUser.emailAddresses[0]?.emailAddress;
 
     if (!email) {
-      logger.warn(`Clerk User ID ${userId} has no verified email address. User synchronization skipped.`);
+      logger.warn(
+        `Clerk User ID ${userId} has no verified email address.`
+      );
     } else {
-      const name = clerkUser.firstName && clerkUser.lastName
-        ? `${clerkUser.firstName} ${clerkUser.lastName}`
-        : clerkUser.firstName || clerkUser.lastName || null;
+      const name =
+        clerkUser.firstName && clerkUser.lastName
+          ? `${clerkUser.firstName} ${clerkUser.lastName}`
+          : clerkUser.firstName || clerkUser.lastName || null;
 
-      // Determine created or updated event
       const existingUser = await userRepository.findByClerkId(userId);
 
-      // Perform DB upsert
       await userRepository.upsert({
         id: userId,
         email,
@@ -48,18 +93,22 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
       });
 
       if (!existingUser) {
-        logger.info(`User synchronized: User created in database (ID: ${userId})`);
+        logger.info(
+          `User synchronized: created (${userId})`
+        );
       } else {
-        logger.info(`User synchronized: User updated in database (ID: ${userId})`);
+        logger.info(
+          `User synchronized: updated (${userId})`
+        );
       }
     }
-  } catch (error: unknown) {
-    const err = error as Error;
-    logger.error(`Clerk user DB synchronization failure: ${err.message}`, err);
-    // Allow request to proceed to handle existing data fallbacks or standard router errors
+  } catch (error) {
+    logger.error(
+      "Clerk user synchronization failed:",
+      error
+    );
   }
 
-  // Populate req.auth matching types
   req.auth = {
     userId,
     sessionId: auth.sessionId || null,

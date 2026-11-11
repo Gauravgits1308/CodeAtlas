@@ -16,11 +16,26 @@ export class GitHubController {
       return next(new AppError("Unauthorized: Missing user authentication session context.", 401));
     }
 
-    const repositories = await this.githubService.getUserRepositories(userId);
-
-    res.status(200).json({
-      success: true,
-      repositories,
-    });
+    try {
+      const repositories = await this.githubService.getUserRepositories(userId);
+      res.status(200).json({
+        success: true,
+        githubConnected: true,
+        repositories,
+      });
+    } catch (err: unknown) {
+      if (
+        err instanceof AppError &&
+        (err.message.includes("No GitHub OAuth connection found") ||
+         err.message.includes("retrieve GitHub credentials"))
+      ) {
+        return res.status(200).json({
+          success: true,
+          githubConnected: false,
+          repositories: [],
+        });
+      }
+      throw err;
+    }
   });
 }

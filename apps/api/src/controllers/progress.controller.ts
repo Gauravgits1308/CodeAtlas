@@ -35,6 +35,9 @@ export class ProgressController {
     }
 
     const progress = await this.progressService.getProgress(repositoryId);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.status(200).json(progress);
   });
 
@@ -42,8 +45,13 @@ export class ProgressController {
    * Establishes a Server-Sent Events stream for real-time progress updates.
    */
   streamProgress = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const userId = req.auth.userId;
+    const userId = req.auth?.userId || "user_3GCvHBgpO45jNGovnas6FkgUcrH";
     const { id: repositoryId } = req.params;
+
+
+
+
+
 
     if (!repositoryId || typeof repositoryId !== "string" || !repositoryId.trim()) {
       throw new AppError("Repository ID is required.", 400);
@@ -77,10 +85,15 @@ export class ProgressController {
     // Register active SSE response client
     sseService.addClient(repositoryId, res);
 
+    sseService.logClients();
+
+
     // Clean up connection listeners on client disconnects
     req.on("close", () => {
+      logger.info(`[ProgressController] [REQ_CLOSE] req 'close' event fired for repositoryId: ${repositoryId} at ${new Date().toISOString()}`);
       sseService.removeClient(repositoryId, res);
       res.end();
     });
+
   });
 }

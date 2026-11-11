@@ -1,6 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
-import { Github, Twitter, Linkedin } from "lucide-react"
+import { Github, Mail, Linkedin } from "lucide-react"
 import { Logo } from "./Logo"
 import { Container } from "@/components/common/Container"
 
@@ -8,89 +8,108 @@ export function Footer() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="border-t border-border/40 bg-background/50">
+    <footer id="footer" className="border-t border-border/10 bg-[#070A13] select-none">
       <Container className="py-12 md:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
-          {/* Logo & Description */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8 md:gap-10 text-left">
+          {/* Logo & Tagline */}
           <div className="space-y-4 md:col-span-2">
             <Logo />
-            <p className="text-sm text-muted-foreground max-w-sm">
-              CodeAtlas is an AI-powered developer platform that helps developers understand, search, document, navigate and analyze software repositories.
+            <p className="text-xs text-muted-foreground max-w-sm leading-relaxed font-sans">
+              Revora is an AI-powered engineering intelligence platform that transforms software repositories into searchable knowledge.
             </p>
-            <div className="flex items-center gap-4">
+            <p className="text-[11px] font-mono text-muted-foreground/60">
+              Made for modern software engineering.
+            </p>
+            <div className="flex items-center gap-4 pt-1">
               <a
-                href="#"
+                href="https://github.com"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="GitHub"
               >
-                <Github className="size-5" />
+                <Github className="size-4.5" />
               </a>
               <a
-                href="#"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Twitter"
-              >
-                <Twitter className="size-5" />
-              </a>
-              <a
-                href="#"
+                href="https://www.linkedin.com/in/gaurav-gupta-48258a323/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="LinkedIn"
               >
-                <Linkedin className="size-5" />
+                <Linkedin className="size-4.5" />
+              </a>
+              <a
+                href="mailto:support@revora.ai"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Email"
+              >
+                <Mail className="size-4.5" />
               </a>
             </div>
           </div>
 
           {/* Product Links */}
           <div className="space-y-4">
-            <h4 className="text-sm font-semibold text-foreground tracking-wider uppercase">Product</h4>
-            <ul className="space-y-2">
+            <h4 className="text-xs font-semibold text-foreground tracking-wider uppercase font-mono">Product</h4>
+            <ul className="space-y-2 text-xs">
               <li>
-                <Link href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
                   Features
                 </Link>
               </li>
               <li>
-                <Link href="#roadmap" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">
                   Roadmap
                 </Link>
               </li>
               <li>
-                <Link href="#documentation" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Pricing
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Resources Links */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-semibold text-foreground tracking-wider uppercase font-mono">Resources</h4>
+            <ul className="space-y-2 text-xs">
+              <li>
+                <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors">
+                  GitHub
+                </a>
+              </li>
+              <li>
+                <Link href="#home" className="text-muted-foreground hover:text-foreground transition-colors">
                   Documentation
                 </Link>
               </li>
               <li>
-                <span className="text-sm text-muted-foreground/60 flex items-center gap-1.5">
-                  Pricing <span className="text-[10px] bg-secondary/10 text-secondary border border-secondary/20 rounded-full px-1.5 py-0 font-medium">Soon</span>
-                </span>
+                <Link href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Terms of Service
+                </Link>
               </li>
             </ul>
           </div>
 
           {/* Company Links */}
           <div className="space-y-4">
-            <h4 className="text-sm font-semibold text-foreground tracking-wider uppercase">Resources</h4>
-            <ul className="space-y-2">
+            <h4 className="text-xs font-semibold text-foreground tracking-wider uppercase font-mono">Company</h4>
+            <ul className="space-y-2 text-xs">
               <li>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Privacy Policy
-                </Link>
+                <a href="mailto:support@revora.ai" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Contact
+                </a>
               </li>
               <li>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Terms of Service
-                </Link>
-              </li>
-              <li>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Blog
-                </Link>
-              </li>
-              <li>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Contact Support
+                <Link href="#home" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Newsletter
                 </Link>
               </li>
             </ul>
@@ -98,13 +117,14 @@ export function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 pt-8 border-t border-border/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">
-            &copy; {currentYear} CodeAtlas. All rights reserved.
+        <div className="mt-12 pt-8 border-t border-border/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground font-sans">
+            &copy; {currentYear} Revora. All rights reserved.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Built with Next.js 15 & Framer Motion
-          </p>
+          <div className="text-left sm:text-right space-y-0.5 font-mono text-[9px] text-muted-foreground/50">
+            <div>Designed & Developed by <span className="text-foreground font-semibold">Gaurav Gupta</span></div>
+            <div>Computer Science Student • IIIT Kota</div>
+          </div>
         </div>
       </Container>
     </footer>

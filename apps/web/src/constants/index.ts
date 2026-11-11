@@ -1,12 +1,12 @@
 export const APP_CONFIG = {
-  TITLE: "CodeAtlas",
+  TITLE: "Revora",
   DESCRIPTION: "AI-powered developer platform to search, document, navigate and analyze software repositories.",
 } as const
 
 export const LOCAL_STORAGE_KEYS = {
-  SESSION: "codeatlas:session",
-  THEME: "codeatlas:theme",
-  SIDEBAR_COLLAPSED: "codeatlas:sidebar:collapsed",
+  SESSION: "revora:session",
+  THEME: "revora:theme",
+  SIDEBAR_COLLAPSED: "revora:sidebar:collapsed",
 } as const
 
 export const API_ROUTES = {

@@ -64,6 +64,23 @@ export class RepositoryRepository {
     });
   }
 
+  async findByIdAndUser(id: string, userId: string): Promise<unknown | null> {
+    return prisma.repository.findFirst({
+      where: {
+        id,
+        userId,
+      },
+      include: {
+        metrics: true,
+        _count: {
+          select: {
+            chunks: true,
+          },
+        },
+      },
+    });
+  }
+
   async updateStatus(id: string, status: RepositoryStatus): Promise<Repository> {
     return prisma.repository.update({
       where: { id },
@@ -80,6 +97,18 @@ export class RepositoryRepository {
 
   async upsert(data: CreateRepositoryInput): Promise<Repository> {
     const { owner, name, userId, ...rest } = data;
+
+    const dbUser = await prisma.user.findUnique({
+        where: {
+            id: userId,
+        },
+    });
+
+    console.log("[DEBUG DATABASE LOOKUP]", {
+        userId,
+        dbUser,
+    });
+
     return prisma.repository.upsert({
       where: {
         owner_name_userId: {

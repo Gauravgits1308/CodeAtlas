@@ -19,8 +19,17 @@ router.get("/", requireAuth, repositoryController.getUserRepositories);
 // POST /api/v1/repositories/import
 router.post("/import", requireAuth, repositoryController.importRepositories);
 
+// GET /api/v1/repositories/:id
+router.get("/:id", requireAuth, repositoryController.getRepository);
+
 // POST /api/v1/repositories/:id/process
 router.post("/:id/process", requireAuth, repositoryController.processRepository);
+
+// POST /api/v1/repositories/:id/cancel
+router.post("/:id/cancel", requireAuth, repositoryController.cancelRepository);
+
+// POST /api/v1/repositories/:id/retry
+router.post("/:id/retry", requireAuth, repositoryController.retryRepository);
 
 // GET /api/v1/repositories/:id/files
 router.get("/:id/files", requireAuth, repositoryController.getRepositoryFiles);

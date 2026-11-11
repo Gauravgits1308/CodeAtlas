@@ -14,6 +14,28 @@ interface RequestOptions extends RequestInit {
   params?: Record<string, string>
 }
 
+// In-memory token cache to prevent flooding Next.js Server Actions on every polling tick
+let cachedGithubToken: string | null = null
+let lastTokenFetchTime = 0
+const TOKEN_CACHE_TTL_MS = 300000 // 5 minutes
+
+async function getMemoizedGithubToken(): Promise<string | null> {
+  const now = Date.now()
+  if (cachedGithubToken !== null && now - lastTokenFetchTime < TOKEN_CACHE_TTL_MS) {
+    return cachedGithubToken
+  }
+
+  try {
+    const token = await getGithubOAuthToken()
+    cachedGithubToken = token
+    lastTokenFetchTime = now
+    return token
+  } catch (err) {
+    console.warn("[ApiClient] GitHub token memoization fallback:", err)
+    return cachedGithubToken
+  }
+}
+
 class ApiClient {
   private baseUrl: string
 
@@ -23,7 +45,7 @@ class ApiClient {
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000")
-    
+
     if (options.params) {
       Object.entries(options.params).forEach(([key, value]) => {
         url.searchParams.append(key, value)
@@ -33,19 +55,19 @@ class ApiClient {
     const headers = new Headers(options.headers)
     headers.set("Content-Type", "application/json")
 
-    // Retrieve tokens to authenticate backend API queries
     let clerkToken: string | null = null
     let githubToken: string | null = null
 
     if (typeof window !== "undefined") {
-      // Client-side environment
       if (window.Clerk?.session) {
         clerkToken = await window.Clerk.session.getToken()
       }
-      try {
-        githubToken = await getGithubOAuthToken()
-      } catch (err) {
-        console.error("Failed to retrieve GitHub token on client-side API call:", err)
+
+      // Bypass Server Action token fetch for GET /progress polling requests to prevent flooding
+      if (!path.includes("/progress")) {
+        githubToken = await getMemoizedGithubToken()
+      } else if (cachedGithubToken) {
+        githubToken = cachedGithubToken
       }
     }
 
@@ -61,7 +83,20 @@ class ApiClient {
       headers,
     }
 
+    console.log("[DEBUG FRONTEND REQUEST]", {
+      url: url.toString(),
+      method: options.method || "GET",
+      hasAuthorization: headers.has("Authorization"),
+      hasXGithubToken: headers.has("X-Github-Token"),
+      isClerkTokenNull: clerkToken === null,
+    });
+
     const response = await fetch(url.toString(), config)
+
+    console.log("[DEBUG FRONTEND RESPONSE]", {
+      url: url.toString(),
+      status: response.status,
+    });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))

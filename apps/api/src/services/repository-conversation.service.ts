@@ -1,19 +1,14 @@
-import OpenAI from "openai";
-import { config } from "../config";
 import { prisma } from "../database";
 import { logger } from "../utils/logger";
 import { AppError } from "../utils/errors";
+import { AIProvider } from "./ai/providers/AIProvider";
+import { createAIProvider } from "./ai/providers/provider.factory";
 
 export class RepositoryConversationService {
-  private openai: OpenAI;
+  private aiProvider: AIProvider;
 
-  constructor(openai?: OpenAI) {
-    this.openai =
-      openai ||
-      new OpenAI({
-        apiKey: config.openrouterApiKey || "dummy-key",
-        baseURL: config.openrouterBaseUrl,
-      });
+  constructor(aiProvider?: AIProvider) {
+    this.aiProvider = aiProvider || createAIProvider();
   }
 
   /**
@@ -86,7 +81,7 @@ export class RepositoryConversationService {
    */
   async addMessage(conversationId: string, role: "user" | "assistant", content: string, sources?: unknown) {
     logger.info(`Messages Added to conversation ${conversationId}: ${role}`);
-    
+
     // Add message
     const msg = await prisma.message.create({
       data: {
@@ -119,7 +114,7 @@ export class RepositoryConversationService {
       const historyText = messages
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n");
-      
+
       const charCount = historyText.length;
       logger.info(`Memory Tokens char size: ${charCount}`);
       return { context: historyText, summaryTriggered: false };
@@ -154,8 +149,7 @@ export class RepositoryConversationService {
    */
   private async summarizeHistory(historyText: string): Promise<string> {
     try {
-      const response = await this.openai.chat.completions.create({
-        model: config.openrouterChatModel,
+      const response = await this.aiProvider.chat({
         messages: [
           {
             role: "system",
@@ -165,7 +159,7 @@ export class RepositoryConversationService {
         ],
         temperature: 0.2,
       });
-      return response.choices[0]?.message?.content || "Dialogue summary unavailable.";
+      return response.answer || "Dialogue summary unavailable.";
     } catch (err) {
       logger.error("Failed to summarize dialogue history:", err);
       return "Dialogue summary unavailable.";

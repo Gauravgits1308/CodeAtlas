@@ -1,5 +1,6 @@
 import { CodeChunk } from "@prisma/client";
 import { prisma } from "../database";
+import { sanitizeForPostgres } from "../utils/sanitize";
 
 export interface CreateChunkInput {
   repositoryId: string;
@@ -15,8 +16,9 @@ export class CodeChunkRepository {
    * Creates a single code chunk and returns the created record.
    */
   async create(input: CreateChunkInput): Promise<CodeChunk> {
+    const sanitizedInput = sanitizeForPostgres(input);
     return prisma.codeChunk.create({
-      data: input,
+      data: sanitizedInput,
     });
   }
 
@@ -24,8 +26,9 @@ export class CodeChunkRepository {
    * Bulk inserts code chunk records into the PostgreSQL database.
    */
   async createMany(chunks: CreateChunkInput[]): Promise<{ count: number }> {
+    const sanitizedChunks = sanitizeForPostgres(chunks);
     return prisma.codeChunk.createMany({
-      data: chunks,
+      data: sanitizedChunks,
     });
   }
 

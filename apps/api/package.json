@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@clerk/express": "^2.1.37",
+    "@google/genai": "^2.15.0",
     "@prisma/client": "^5.10.0",
     "bullmq": "^5.79.3",
     "cors": "^2.8.5",

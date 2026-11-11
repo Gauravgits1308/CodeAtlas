@@ -19,9 +19,9 @@ export class EmailService {
     message: string;
     time: Date;
   }): Promise<void> {
-    const subjectLine = `Contact Form Submission - CodeAtlas`;
+    const subjectLine = `Contact Form Submission - Revora`;
     const textBody = `
-Contact Form Submission - CodeAtlas
+Contact Form Submission - Revora
 ----------------------------------
 Name: ${submission.name}
 Email: ${submission.email}

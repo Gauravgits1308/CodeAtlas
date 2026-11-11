@@ -22,6 +22,10 @@ import explainSelectionRouter from "./routes/explain-selection.routes";
 import documentationRouter from "./routes/documentation.routes";
 import diagramRouter from "./routes/diagram.routes";
 import progressRouter from "./routes/progress.routes";
+import { sseService } from "./services/sse.service";
+import "./workers/repository.worker";
+console.log(`[API_BOOT] PID=${process.pid} START=${new Date().toISOString()}`);
+logger.info(`[API_BOOT] PID=${process.pid} START=${new Date().toISOString()}`);
 
 const app = express();
 
@@ -97,6 +101,9 @@ const startServer = async () => {
 
   // Connect database
   await connectDb();
+
+  // Initialize SSE Redis Subscriber
+  sseService.initSubscriber();
 
   app.listen(config.port, () => {
     logger.info(`Express server running on port ${config.port} in [${config.nodeEnv}] mode.`);

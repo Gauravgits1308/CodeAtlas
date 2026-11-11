@@ -20,8 +20,8 @@ export function Logo() {
           <path d="M16 21V24" stroke="#8B5CF6" strokeWidth="1.5" strokeLinecap="round"/>
         </svg>
       </div>
-      <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/80 bg-clip-text text-transparent">
-        CodeAtlas
+      <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/80 bg-clip-text text-transparent font-sans">
+        Revora
       </span>
     </Link>
   )

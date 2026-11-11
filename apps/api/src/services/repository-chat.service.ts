@@ -1,10 +1,11 @@
-import OpenAI from "openai";
 import { config } from "../config";
 import { RepositoryRepository } from "../repositories/repository.repository";
 import { RepositorySearchService } from "./repository-search.service";
 import { RepositoryConversationService } from "./repository-conversation.service";
 import { AppError } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { AIProvider } from "./ai/providers/AIProvider";
+import { createAIProvider } from "./ai/providers/provider.factory";
 
 export interface ChatSource {
   filePath: string;
@@ -21,21 +22,16 @@ export interface ChatResponse {
 export class RepositoryChatService {
   private repositoryRepository: RepositoryRepository;
   private repositorySearchService: RepositorySearchService;
-  private openai: OpenAI;
+  private aiProvider: AIProvider;
 
   constructor(
     repositoryRepository?: RepositoryRepository,
     repositorySearchService?: RepositorySearchService,
-    openai?: OpenAI
+    aiProvider?: AIProvider
   ) {
     this.repositoryRepository = repositoryRepository || new RepositoryRepository();
     this.repositorySearchService = repositorySearchService || new RepositorySearchService();
-    this.openai =
-      openai ||
-      new OpenAI({
-        apiKey: config.openrouterApiKey || "dummy-key",
-        baseURL: config.openrouterBaseUrl,
-      });
+    this.aiProvider = aiProvider || createAIProvider();
   }
 
   /**
@@ -56,8 +52,16 @@ export class RepositoryChatService {
     }
 
     // 2. Verify repository is indexed
-    if (repo.status !== "COMPLETED") {
-      throw new AppError("Repository codebase is not fully indexed yet.", 400);
+    const allowedStatuses = [
+      "ANALYZING",
+      "COMPLETED"
+    ];
+
+    if (!allowedStatuses.includes(repo.status)) {
+      throw new AppError(
+        "Repository codebase is not fully indexed yet.",
+        400
+      );
     }
 
     // 3. Detect Mode
@@ -100,7 +104,7 @@ export class RepositoryChatService {
 
     // Load conversation history memory if conversationId is provided
     if (conversationId) {
-      const convoService = new RepositoryConversationService(this.openai);
+      const convoService = new RepositoryConversationService(this.aiProvider);
       const history = await convoService.getHistoryContext(conversationId);
       if (history.context) {
         chatMessages.push({
@@ -114,39 +118,25 @@ export class RepositoryChatService {
 
     logger.info(`Prompt Size: ${userPrompt.length} characters (approx. ${Math.round(userPrompt.length / 4)} tokens)`);
 
-    if (!config.openrouterApiKey) {
-      throw new AppError("OpenRouter API key is missing. Please configure OPENROUTER_API_KEY.", 500);
-    }
-
-    if (!config.openrouterChatModel) {
-      throw new AppError("OPENROUTER_CHAT_MODEL is not configured.", 500);
-    }
-
-    // 8. Call OpenRouter completions
+    // 8. Call AI Provider completions
     const llmStartTime = Date.now();
-    logger.info(`Sending Chat API request to OpenRouter model: ${config.openrouterChatModel}`);
+    logger.info(`Sending Chat API request to AI Provider`);
 
     let answer = "";
-    let promptTokens = 0;
-    let completionTokens = 0;
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: config.openrouterChatModel,
+      const response = await this.aiProvider.chat({
         messages: chatMessages,
         temperature: 0.15,
       });
 
-      answer = response.choices[0]?.message?.content || "";
-      promptTokens = response.usage?.prompt_tokens || 0;
-      completionTokens = response.usage?.completion_tokens || 0;
-
+      answer = response.answer || "";
       const llmLatency = Date.now() - llmStartTime;
-      logger.info(`LLM completed in ${llmLatency}ms. Prompt tokens: ${promptTokens}, Completion tokens: ${completionTokens}`);
+      logger.info(`LLM completed in ${llmLatency}ms.`);
     } catch (err: unknown) {
       const error = err as Error;
-      logger.error(`OpenRouter Chat API completions failed: ${error.message}`, error);
-      throw new AppError(`OpenRouter Chat completions failure: ${error.message}`, 500);
+      logger.error(`Chat completions failed: ${error.message}`, error);
+      throw new AppError(`Chat completions failure: ${error.message}`, 500);
     }
 
     // 9. Hallucination Protection verification
@@ -177,7 +167,7 @@ export class RepositoryChatService {
 
     // Save dialogue thread
     if (conversationId) {
-      const convoService = new RepositoryConversationService(this.openai);
+      const convoService = new RepositoryConversationService(this.aiProvider);
       await convoService.addMessage(conversationId, "user", question);
       await convoService.addMessage(conversationId, "assistant", answer, sources);
     }
@@ -218,9 +208,17 @@ export class RepositoryChatService {
     }
 
     // 2. Verify repository is indexed
-    if (repo.status !== "COMPLETED") {
-      throw new AppError("Repository codebase is not fully indexed yet.", 400);
-    }
+    // const allowed = [
+    //   "ANALYZING",
+    //   "COMPLETED",
+    // ];
+
+    // if (!allowed.includes(repo.status)) {
+    //   throw new AppError(
+    //     "Repository is still being processed.",
+    //     400
+    //   );
+    // }
 
     // 3. Detect Mode
     const mode = this.detectMode(question);
@@ -269,7 +267,7 @@ export class RepositoryChatService {
     ];
 
     if (conversationId) {
-      const convoService = new RepositoryConversationService(this.openai);
+      const convoService = new RepositoryConversationService(this.aiProvider);
       const history = await convoService.getHistoryContext(conversationId);
       if (history.context) {
         chatMessages.push({
@@ -283,36 +281,17 @@ export class RepositoryChatService {
 
     logger.info(`Stream Started. Chunks count: ${uniqueChunks.length}`);
 
-    if (!config.openrouterApiKey) {
-      throw new AppError("OpenRouter API key is missing. Please configure OPENROUTER_API_KEY.", 500);
-    }
-
-    if (!config.openrouterChatModel) {
-      throw new AppError("OPENROUTER_CHAT_MODEL is not configured.", 500);
-    }
-
-    // 8. Call OpenRouter streaming completions
+    // 8. Call AI Provider streaming completions
     const llmStartTime = Date.now();
     let firstTokenLatency: number | null = null;
     let tokensCount = 0;
     let accumulatedAnswer = "";
 
     try {
-      const stream = await this.openai.chat.completions.create({
-        model: config.openrouterChatModel,
+      await this.aiProvider.chatStream({
         messages: chatMessages,
         temperature: 0.15,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        if (signal?.aborted) {
-          logger.info("Stream cancelled / aborted by signal");
-          break;
-        }
-
-        const token = chunk.choices[0]?.delta?.content || "";
-        if (token) {
+        onToken: (token) => {
           if (firstTokenLatency === null) {
             firstTokenLatency = Date.now() - llmStartTime;
             logger.info(`First Token Latency: ${firstTokenLatency}ms`);
@@ -320,15 +299,16 @@ export class RepositoryChatService {
           tokensCount++;
           accumulatedAnswer += token;
           onToken(token);
-        }
-      }
+        },
+        signal,
+      });
 
       const totalDuration = Date.now() - totalStartTime;
       logger.info(`Stream completed. Latency: ${totalDuration}ms, Tokens: ${tokensCount}`);
 
       // Save messages on stream completions success
       if (conversationId && !signal?.aborted) {
-        const convoService = new RepositoryConversationService(this.openai);
+        const convoService = new RepositoryConversationService(this.aiProvider);
         await convoService.addMessage(conversationId, "user", question);
         await convoService.addMessage(conversationId, "assistant", accumulatedAnswer, sources);
       }
@@ -336,8 +316,8 @@ export class RepositoryChatService {
       onEnd();
     } catch (err: unknown) {
       const error = err as Error;
-      logger.error(`OpenRouter Chat API streaming completions failed: ${error.message}`, error);
-      throw new AppError(`OpenRouter Chat completions stream failure: ${error.message}`, 500);
+      logger.error(`Chat streaming completions failed: ${error.message}`, error);
+      throw new AppError(`Chat completions stream failure: ${error.message}`, 500);
     }
   }
 

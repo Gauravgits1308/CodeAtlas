@@ -90,7 +90,7 @@ export class ExplainController {
     // 3. Query OpenRouter Completions
     try {
       const response = await this.openai.chat.completions.create({
-        model: config.openrouterChatModel || "google/gemini-2.5-flash",
+        model: config.openrouterChatModel || "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -99,7 +99,7 @@ export class ExplainController {
       });
 
       const answer = response.choices[0]?.message?.content || "Explanation unavailable.";
-      
+
       res.status(200).json({
         success: true,
         answer,

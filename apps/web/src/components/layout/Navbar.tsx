@@ -2,9 +2,9 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Menu, X, ArrowRight } from "lucide-react"
+import { Menu, X, ArrowRight, Github } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Show, UserButton } from "@clerk/nextjs"
+import { UserButton, useAuth } from "@clerk/nextjs"
 import { usePathname } from "next/navigation"
 import { Logo } from "./Logo"
 import { buttonVariants } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Badge } from "@/components/common/Badge"
 import { cn } from "@/lib/utils"
 
 export function Navbar() {
+  const { isSignedIn } = useAuth()
   const [isOpen, setIsOpen] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
   const pathname = usePathname()
@@ -48,12 +49,10 @@ export function Navbar() {
   }, [])
 
   const navLinks = [
-    { name: "Home", href: "/#home" },
     { name: "Features", href: "/#features" },
-    { name: "About", href: "/#about" },
-    { name: "Documentation", href: "/#documentation" },
-    { name: "Pricing", href: "#", badge: "Soon" },
-    { name: "Contact", href: "/#contact" },
+    { name: "How It Works", href: "/#how-it-works" },
+    { name: "Pricing", href: "/#pricing", badge: "Soon" },
+    { name: "FAQ", href: "/#faq" },
   ]
 
   return (
@@ -81,8 +80,7 @@ export function Navbar() {
                 onClick={(e) => handleNavClick(e, link.href)}
                 className={cn(
                   "text-sm font-medium transition-colors hover:text-foreground flex items-center gap-1.5 hover:-translate-y-0.5 transform duration-200",
-                  pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground",
-                  link.badge && "pointer-events-none"
+                  pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground"
                 )}
               >
                 {link.name}
@@ -97,28 +95,40 @@ export function Navbar() {
 
           {/* Action Buttons */}
           <div className="hidden md:flex items-center gap-4">
-            <Show when="signed-out">
-              <Link
-                href="/sign-in"
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "sm" }),
-                  "text-muted-foreground hover:text-foreground cursor-pointer rounded-xl"
-                )}
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/sign-up"
-                className={cn(
-                  buttonVariants({ size: "sm" }),
-                  "bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group cursor-pointer rounded-xl px-4"
-                )}
-              >
-                Get Started
-                <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              </Link>
-            </Show>
-            <Show when="signed-in">
+            <a
+              href="https://github.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-all duration-200 hover:-translate-y-0.5 mr-2"
+              aria-label="GitHub Repository"
+            >
+              <Github className="size-4.5" />
+            </a>
+
+            {!isSignedIn && (
+              <>
+                <Link
+                  href="/sign-in"
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "sm" }),
+                    "text-muted-foreground hover:text-foreground cursor-pointer rounded-xl"
+                  )}
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className={cn(
+                    buttonVariants({ size: "sm" }),
+                    "bg-primary hover:bg-primary/95 text-white shadow-sm font-medium flex items-center gap-1 group cursor-pointer rounded-xl px-4"
+                  )}
+                >
+                  Get Started
+                  <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+                </Link>
+              </>
+            )}
+            {isSignedIn && (
               <div className="flex items-center gap-4">
                 <Link
                   href="/dashboard"
@@ -132,7 +142,7 @@ export function Navbar() {
                 </Link>
                 <UserButton />
               </div>
-            </Show>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -171,7 +181,7 @@ export function Navbar() {
                     className={cn(
                       "text-base font-medium transition-colors py-1.5 flex items-center gap-2",
                       pathname === link.href ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
-                      link.badge && "pointer-events-none opacity-60"
+                      link.badge && "opacity-60"
                     )}
                   >
                     {link.name}
@@ -184,29 +194,31 @@ export function Navbar() {
                 ))}
               </nav>
               <div className="pt-4 border-t border-border/40 flex flex-col gap-3">
-                <Show when="signed-out">
-                  <Link
-                    href="/sign-in"
-                    className={cn(
-                      buttonVariants({ variant: "outline" }),
-                      "w-full text-muted-foreground hover:text-foreground flex items-center justify-center h-10 rounded-xl"
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/sign-up"
-                    className={cn(
-                      buttonVariants({ variant: "default" }),
-                      "w-full bg-primary hover:bg-primary/95 text-white flex items-center justify-center h-10 rounded-xl"
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    Get Started
-                  </Link>
-                </Show>
-                <Show when="signed-in">
+                {!isSignedIn && (
+                  <>
+                    <Link
+                      href="/sign-in"
+                      className={cn(
+                        buttonVariants({ variant: "outline" }),
+                        "w-full text-muted-foreground hover:text-foreground flex items-center justify-center h-10 rounded-xl"
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/sign-up"
+                      className={cn(
+                        buttonVariants({ variant: "default" }),
+                        "w-full bg-primary hover:bg-primary/95 text-white flex items-center justify-center h-10 rounded-xl"
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      Get Started
+                    </Link>
+                  </>
+                )}
+                {isSignedIn && (
                   <div className="flex flex-col gap-3">
                     <Link
                       href="/dashboard"
@@ -224,7 +236,7 @@ export function Navbar() {
                       <UserButton />
                     </div>
                   </div>
-                </Show>
+                )}
               </div>
             </div>
           </motion.div>

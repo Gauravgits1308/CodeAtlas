@@ -64,7 +64,7 @@
   --input: #1F2937;
   --ring: #3B82F6;
   --radius: 12px;
-  
+
   --font-sans: var(--font-geist-sans), Inter, system-ui, -apple-system, sans-serif;
 
   --sidebar: #111827;
@@ -98,7 +98,7 @@
   --input: #1F2937;
   --ring: #3B82F6;
   --radius: 12px;
-  
+
   --font-sans: var(--font-geist-sans), Inter, system-ui, -apple-system, sans-serif;
 
   --sidebar: #111827;
@@ -120,5 +120,110 @@
   }
   html {
     @apply font-sans scroll-smooth;
+  }
+}
+
+/* Clerk GitHub-First Enforcements */
+.clerk-github-only .cl-form,
+.clerk-github-only .cl-dividerRow,
+.clerk-github-only .cl-socialButtonsBlockButton__google,
+.clerk-github-only .cl-socialButtonsIconButton__google {
+  display: none !important;
+}
+
+/* Hide Clerk internal dev mode badge */
+.cl-internal-development-badge,
+.cl-internal-development-mode-badge,
+[id^="clerk-dev-badge"] {
+  display: none !important;
+}
+
+/* Premium Calm Auth Animations */
+@keyframes subtleGlowPulse {
+  0%, 100% {
+    transform: translate3d(-50%, -50%, 0) scale(1.0);
+    opacity: 0.18;
+  }
+  50% {
+    transform: translate3d(-50%, -50%, 0) scale(1.04);
+    opacity: 0.26;
+  }
+}
+
+@keyframes particleTwinkle {
+  0%, 100% { opacity: 0.08; }
+  50% { opacity: 0.24; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cardEntry {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.animate-subtle-glow {
+  animation: subtleGlowPulse 25s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-particle-twinkle {
+  animation: particleTwinkle 8s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Staggered Load Fade Ins */
+.animate-fade-bg {
+  animation: fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-fade-glow {
+  opacity: 0;
+  animation: fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) 100ms forwards;
+}
+
+.animate-fade-logo {
+  opacity: 0;
+  animation: fadeIn 500ms cubic-bezier(0.22, 1, 0.36, 1) 200ms forwards;
+}
+
+.animate-fade-heading {
+  opacity: 0;
+  animation: fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) 300ms forwards;
+}
+
+.animate-fade-subtitle {
+  opacity: 0;
+  animation: fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) 400ms forwards;
+}
+
+.animate-fade-card {
+  opacity: 0;
+  animation: cardEntry 700ms cubic-bezier(0.22, 1, 0.36, 1) 500ms forwards;
+}
+
+.animate-fade-btn {
+  opacity: 0;
+  animation: fadeIn 500ms cubic-bezier(0.22, 1, 0.36, 1) 700ms forwards;
+}
+
+/* prefers-reduced-motion fallback */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+    transform: none !important;
   }
 }

@@ -17,8 +17,8 @@ export class ProgressService {
       where: { id: repositoryId },
     });
 
-    const startedTime = status?.startedAt 
-      ? new Date(status.startedAt).getTime() 
+    const startedTime = status?.startedAt
+      ? new Date(status.startedAt).getTime()
       : (repo ? new Date(repo.createdAt).getTime() : 0);
 
     const isCurrentlyQueued = !status || status.currentStage === "QUEUED";
@@ -27,7 +27,7 @@ export class ProgressService {
       // It has been queued for more than 10 seconds. Check queue details!
       let reason = "Worker failed to consume processing task.";
       let isRedisOffline = false;
- 
+
       // 1. Verify Redis Connection Health
       try {
         const client = await repositoryQueue.client;
@@ -41,7 +41,7 @@ export class ProgressService {
         isRedisOffline = true;
         reason = `Redis connection failure: ${error.message}`;
       }
- 
+
       if (!isRedisOffline) {
         // 2. Verify Worker health
         try {
@@ -72,13 +72,32 @@ export class ProgressService {
         stageProgress: 0.0,
         errorMessage: `Repository processing timeout: remains queued for >10 seconds. Reason: ${reason}. Please retry sync.`,
       });
-      
-      // Update repository database status to FAILED as well
+
+      // Update repository database status to STALLED as well
       await prisma.repository.update({
         where: { id: repositoryId },
-        data: { status: "FAILED" },
+        data: { status: "STALLED" },
       });
-      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: FAILED`);
+      logger.info(`[Repository: ${repositoryId}] Repository status transitioned to: STALLED`);
+    }
+
+    // Check for 5-minute stalling during active processing
+    const lastActiveTime = status?.lastHeartbeat
+      ? new Date(status.lastHeartbeat).getTime()
+      : (status?.lastUpdated ? new Date(status.lastUpdated).getTime() : startedTime);
+
+    const isProcessingState = repo && ["CLONING", "ANALYZING", "PROCESSING", "INDEXING"].includes(repo.status);
+    if (isProcessingState && lastActiveTime > 0 && (Date.now() - lastActiveTime > 300000) && repo.status !== "STALLED") {
+      logger.warn(`Repository ${repositoryId} processing stalled for >5 minutes without heartbeat update.`);
+      status = await this.updateProgress(repositoryId, {
+        currentStage: "STALLED",
+        currentMessage: "This repository appears stuck.",
+        errorMessage: "This repository appears stuck: no progress updates received for over 5 minutes. You may Cancel, Retry, or Delete.",
+      });
+      await prisma.repository.update({
+        where: { id: repositoryId },
+        data: { status: "STALLED" },
+      });
     }
 
     if (!status) {
@@ -223,8 +242,10 @@ export class ProgressService {
     }
 
     // Broadcast SSE update
+    console.log(`[UPDATE_PROGRESS]\nrepositoryId: ${repositoryId}\nstage: ${result.currentStage}\nprogress: ${result.stageProgress}\nmessage: ${result.currentMessage}`);
     sseService.broadcast(repositoryId, {
       repositoryId,
+
       status: state,
       currentStage: result.currentStage,
       progress: result.stageProgress,

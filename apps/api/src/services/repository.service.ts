@@ -80,6 +80,14 @@ export class RepositoryService {
         userId,
       };
 
+      console.log("[DEBUG IMPORT LOGS]", {
+        "Authenticated Clerk user": userId,
+        "Repository.userId": input.userId,
+        "Repository.owner": input.owner,
+        "Repository.name": input.name,
+        "Repository.fullName": input.fullName,
+      });
+
       const upserted = await this.repositoryRepository.upsert(input);
       logger.info(`[Repository: ${upserted.id}] Repository created in database`);
       importedRepos.push(upserted);
@@ -93,5 +101,9 @@ export class RepositoryService {
    */
   async getUserRepositories(userId: string): Promise<unknown[]> {
     return this.repositoryRepository.findByUser(userId);
+  }
+
+  async getRepositoryById(id: string, userId: string): Promise<unknown | null> {
+    return this.repositoryRepository.findByIdAndUser(id, userId);
   }
 }
